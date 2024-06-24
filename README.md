@@ -51,7 +51,7 @@ conda activate TNTAnalysis
 ```
 4. Install the TNT package. 
 ```
-python setup.py install
+pip install .
 ```
 5. (Optional) If you get an error message about missing GPU support, install the correct PyTorch version for your system [(Official Pytorch HowTo)](https://pytorch.org/get-started/locally/).
 </details>
