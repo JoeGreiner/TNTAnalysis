@@ -60,9 +60,9 @@ python setup.py install
 
 The Analysis process is subdivided into three main steps:
 
-1. TNT Tip prediction and tracking: Run the TNT tip prediction and tracking using Trackmate. Visualising the results using Fiji/TrackMate is optional but recommended.
-2. (Optional) Create Masking: Select a subset of TNT tracks to be included in the analysis using Napari.
-3. (Optional) Apply Masking: Apply the masking and create masked track files. Optional, but recommended: visualise the results using Fiji/TrackMate.
+1. **TNT Tip prediction and tracking:** Run the TNT tip prediction and tracking using Trackmate. Visualising the results using Fiji/TrackMate is optional but recommended.
+2. **(Optional) Create Masking:** Select a subset of TNT tracks to be included in the analysis using Napari.
+3. **(Optional) Apply Masking:** Apply the masking and create masked track files. Optional, but recommended: visualise the results using Fiji/TrackMate.
 
 ## Running Individual Steps
 
@@ -99,6 +99,9 @@ TNT_3_ApplyMask
  2. Using shortcuts:
 
 For Linux-based systems, the install script sets up .desktop files for your users. You should be able to find the shortcuts in your application menu, i.e. by using the super key (application search), and typing "TNT_".
+
+[!](https://github.com/JoeGreiner/TNTAnalysis/assets/24453528/9fc4d145-6569-42d6-8126-fafff8c502e0)
+
 </details>
 
 ## Step 1: TNT Tip prediction and tracking
