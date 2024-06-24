@@ -1,6 +1,7 @@
 # TNTAnalysis
+![image](https://github.com/JoeGreiner/TNTAnalysis/assets/24453528/8e2b1467-df7f-498b-afe6-06fa31b22cca)
 
-This repository contains software for the deep learning-based analysis of tunnelling nanotubes (TNT) in reflection microscopy time series. Therefore, TNT tips are predicted using neural networks, and then tracked using Fiji. A user-friendly GUI is provided to guide the user through the analysis process. While we have written the software with Leica's .lif files in mind, it can be easily adapted to other file formats.
+This repository contains software for the deep learning-based analysis of tunnelling nanotubes (TNT) in reflection microscopy time series. Therefore, TNT tips are predicted using neural networks, and then tracked using TrackMate/Fiji. A user-friendly GUI is provided to guide the user through the analysis process. While we have written the software with Leica's .lif files in mind, it can be easily adapted to other file formats.
 
 ## Installation
 
