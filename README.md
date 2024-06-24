@@ -107,11 +107,13 @@ For Linux-based systems, the install script sets up .desktop files for your user
 1. Set up your parameters in the GUI.
 <details>
 <summary>Parameters</summary> 
-* nnUNet dataset number: The dataset number for the nnUNet model. We provide a pre-trained model for the TNT tip prediction. The dataset number is 301. If you want to use the pre-trained model, press the "Download Model" button. It will download the model and set the dataset number automatically.
-* nnUNet model folder: This is the folder where the nnUNet modela are saved ($nnUNet_results). If you want to use the pre-trained model, press the "Download Model" button. It will download the model and set the path automatically.
-* Disable test-time augmentation: nnUnet uses test-time augmentation by default. While we recommend using it, you can disable it here for faster computation.
-* Sliding window size: The size of the sliding window used for the prediction. The default and recommended value is 0.5.
-* Fiji path: The path to the Fiji folder (e.g. C:\Fiji.app). You can also press the "Download and link Fiji" button to download Fiji and set the path automatically.
+ 
+* **nnUNet dataset number**: The dataset number for the nnUNet model. We provide a pre-trained model for the TNT tip prediction. The dataset number is 301. If you want to use the pre-trained model, press the "Download Model" button. It will download the model and set the dataset number automatically.
+* **nnUNet model folder**: This is the folder where the nnUNet modela are saved ($nnUNet_results). If you want to use the pre-trained model, press the "Download Model" button. It will download the model and set the path automatically.
+* **Disable test-time augmentation**: nnUnet uses test-time augmentation by default. While we recommend using it, you can disable it here for faster computation.
+* **Sliding window size**: The size of the sliding window used for the prediction. The default and recommended value is 0.5.
+* **Fiji path**: The path to the Fiji folder (e.g. C:\Fiji.app). You can also press the "Download and link Fiji" button to download Fiji and set the path automatically.
+
 </details>
 
 2. Drag and drop in either a folder with .lif files or a single .lif file. Press the "Start" button to start the prediction and tracking. The software will create a folder with the same name as the .lif file in the same directory. We also provide a test_file accessible by pressing the 'download test file' button.
