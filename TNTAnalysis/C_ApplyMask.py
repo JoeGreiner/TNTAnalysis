@@ -2,6 +2,8 @@ from skimage import io as skio
 import numpy as np
 import os
 import pandas as pd
+
+from TNTAnalysis.fileIO.git import check_if_git_uptodate
 from TNTAnalysis.fileIO.xlsx import fix_df_lengths
 import logging
 
@@ -239,6 +241,15 @@ class GUI_TNT_Analysis(QWidget):
 
 def run_GUI():
     app = QApplication([])
+
+    git_is_uptodate = check_if_git_uptodate()
+    if not git_is_uptodate:
+        logging.info("The local git repository is not up to date with the remote repository. Please update the git repository.")
+        msg = QMessageBox()
+        msg.setWindowTitle("Git Repository not up to date")
+        msg.setText("The local git repository is not up to date with the remote repository. Please update the git repository!")
+        msg.exec()
+
     ex = GUI_TNT_Analysis()
     ex.show()
     app.exec()

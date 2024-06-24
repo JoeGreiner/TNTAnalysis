@@ -9,6 +9,7 @@ dependencies:
   - bokeh==3.4.1
   - chardet
   - ffmpeg
+  - gitpython
   - pyimagej
   - openjdk=8
   - itk

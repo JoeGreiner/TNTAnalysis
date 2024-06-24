@@ -1,3 +1,4 @@
+from PyQt5.QtCore import QSettings
 from setuptools import setup, find_packages
 from setuptools.command.install import install
 import os
@@ -6,6 +7,11 @@ import shutil
 class LocalSetup(install):
     def run(self):
         install.run(self)
+
+        settings = QSettings("JoeGreiner", "TNT_Analysis_GUI")
+        git_dir = os.path.abspath(os.path.dirname(__file__))
+        print(f'Setting git_repo_path to {git_dir}')
+        settings.setValue("git_repo_path", git_dir)
 
         # if unix
         if os.name == 'posix':

@@ -5,8 +5,10 @@ from magicgui import magicgui
 from napari.layers import Image, Labels
 import skimage
 
-from PyQt5.QtWidgets import QMessageBox
+from PyQt5.QtWidgets import QMessageBox, QApplication
 from PyQt5.QtCore import QSettings
+
+from TNTAnalysis.fileIO.git import check_if_git_uptodate
 
 
 def run_GUI():
@@ -118,4 +120,15 @@ def run_GUI():
     napari.run()
 
 if __name__ == '__main__':
+
+    git_is_uptodate = check_if_git_uptodate()
+    if not git_is_uptodate:
+        print("The local git repository is not up to date with the remote repository. Please update the git repository.")
+        app = QApplication([])
+        msg = QMessageBox()
+        msg.setWindowTitle("Git Repository not up to date")
+        msg.setText("The local git repository is not up to date with the remote repository. Please update the git repository!")
+        msg.exec()
+
+
     run_GUI()

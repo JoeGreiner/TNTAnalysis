@@ -11,6 +11,7 @@ from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLineEdit, QPushButton, QFileD
     QTextEdit, QHBoxLayout, QCheckBox, QDoubleSpinBox, QMessageBox
 
 from TNTAnalysis.fileIO.download_files import download_fiji, download_model, download_testfiles
+from TNTAnalysis.fileIO.git import check_if_git_uptodate
 from TNTAnalysis.fileIO.lif_preperation import prepare_single_lif_to_nii, combine_lif_and_matching_prediction
 import os
 
@@ -594,6 +595,15 @@ def run_GUI():
     logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(message)s')
 
     app = QApplication([])
+
+    git_is_uptodate = check_if_git_uptodate()
+    if not git_is_uptodate:
+        logging.info("The local git repository is not up to date with the remote repository. Please update the git repository.")
+        msg = QMessageBox()
+        msg.setWindowTitle("Git Repository not up to date")
+        msg.setText("The local git repository is not up to date with the remote repository. Please update the git repository!")
+        msg.exec()
+
     ex = GUI_TNT_Analysis()
     ex.show()
     app.exec()
