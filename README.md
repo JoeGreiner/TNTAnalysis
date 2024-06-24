@@ -103,13 +103,20 @@ For Linux-based systems, the install script sets up .desktop files for your user
 The Analysis process is subdivided into three main steps:
 
 1. **TNT Tip prediction and tracking:** Run the TNT tip prediction and tracking using Trackmate. Visualising the results using Fiji/TrackMate is optional but recommended.
-
+   
+<details>
+<summary>Video</summary>
+ 
 [!](https://github.com/JoeGreiner/TNTAnalysis/assets/24453528/3b4dba65-bd22-46cb-acc4-756b346d01df)
+</details>
 
 2. **(Optional) Create Masking & Apply Masking:** Select a subset of TNT tracks to be included in the analysis using Napari. Optional, but recommended: visualise the results using Fiji/TrackMate.
-
+<details>
+<summary>Video</summary>
+ 
 [!](https://github.com/JoeGreiner/TNTAnalysis/assets/24453528/5be41ba6-bec1-4f9b-ad27-7590491739a7)
 
+</details>
 
 ## Step 1: TNT Tip prediction and tracking
 
