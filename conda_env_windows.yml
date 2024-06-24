@@ -1,0 +1,43 @@
+name: TNTAnalysis
+channels:
+  - nvidia
+  - pytorch
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.9
+  - bokeh==3.4.1
+  - chardet
+  - ffmpeg
+  - pyimagej
+  - openjdk=8
+  - itk
+  - matplotlib
+  - pyqt
+  - nibabel
+  - numpy
+  - pandas
+  - readlif
+  - requests
+  - scienceplots
+  - scikit-learn
+  - scipy
+  - seaborn
+  - SimpleITK
+  - scikit-image
+  - tifffile
+  - pytorch
+  - pytorch-cuda
+  - Pillow
+  - pywin32
+  - tqdm
+  - xlsxwriter
+  - python-wget
+  - openpyxl
+  - pip
+  - pip:
+      - ffmpeg-python
+      - nnunetv2
+      - napari[pyqt5]
+      - napari-aicsimageio
+      - napari-nifti
