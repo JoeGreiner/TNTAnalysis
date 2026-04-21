@@ -16,7 +16,7 @@ dependencies:
   - matplotlib
   - pyqt
   - nibabel
-  - numpy==1.23.1
+  - numpy==1.26.4
   - pandas
   - readlif
   - requests
@@ -40,5 +40,6 @@ dependencies:
       - napari[pyqt5]
       - napari-aicsimageio
       - napari-nifti
+      - blosc2
 
 
