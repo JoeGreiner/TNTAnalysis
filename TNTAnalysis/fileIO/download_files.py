@@ -51,21 +51,23 @@ def download_fiji(path_to_download_directory: str, overwrite: bool = False):
         os.makedirs(path_to_download_directory)
     if platform.system() == 'Linux':
         logging.info('Downloading Fiji for Linux')
-        url_fiji = 'https://downloads.imagej.net/fiji/latest/fiji-latest-linux64-jdk.zip'
-        fiji_path = os.path.join(path_to_download_directory, 'Fiji')
+        url_fiji = 'https://downloads.micron.ox.ac.uk/fiji_update/mirrors/fiji-stable/fiji-stable-linux64-jdk.zip'
     elif platform.system() == 'Darwin':
         logging.info('Downloading Fiji for MacOS')
-        url_fiji = 'https://downloads.imagej.net/fiji/latest/fiji-latest-macos-arm64-jdk.zip'
-        fiji_path = os.path.join(path_to_download_directory, 'Fiji.app')
+        url_fiji = 'https://downloads.micron.ox.ac.uk/fiji_update/mirrors/fiji-stable/fiji-stable-macosx-jdk.zip'
     elif platform.system() == 'Windows':
         logging.info('Downloading Fiji for Windows')
-        url_fiji = 'https://downloads.imagej.net/fiji/latest/fiji-latest-win64-jdk.zip'
-        fiji_path = os.path.join(path_to_download_directory, 'Fiji')
+        url_fiji = 'https://downloads.micron.ox.ac.uk/fiji_update/mirrors/fiji-stable/fiji-stable-win64-jdk.zip'
     else:
         raise NotImplementedError(f'Platform {platform.system()} not supported')
     download(url_fiji, os.path.join(path_to_download_directory, 'fiji.zip'), overwrite)
     unzip_file(os.path.join(path_to_download_directory, 'fiji.zip'), path_to_download_directory)
 
+    fiji_path = os.path.join(path_to_download_directory, 'Fiji')
+    if not os.path.exists(fiji_path):
+        fiji_path = os.path.join(path_to_download_directory, 'Fiji.app')
+        assert os.path.exists(fiji_path),\
+            "Something went wrong downloading Fiji, please select the Fiji folder manually."
     return fiji_path
 
 
