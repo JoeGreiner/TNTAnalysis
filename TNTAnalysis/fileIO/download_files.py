@@ -51,13 +51,13 @@ def download_fiji(path_to_download_directory: str, overwrite: bool = False):
         os.makedirs(path_to_download_directory)
     if platform.system() == 'Linux':
         logging.info('Downloading Fiji for Linux')
-        url_fiji = 'https://downloads.imagej.net/fiji/latest/fiji-linux64.zip'
+        url_fiji = 'https://downloads.imagej.net/fiji/latest/fiji-latest-linux64-jdk.zip'
     elif platform.system() == 'Darwin':
         logging.info('Downloading Fiji for MacOS')
-        url_fiji = 'https://downloads.imagej.net/fiji/latest/fiji-macosx.zip'
+        url_fiji = 'https://downloads.imagej.net/fiji/latest/fiji-latest-macos-arm64-jdk.zip'
     elif platform.system() == 'Windows':
         logging.info('Downloading Fiji for Windows')
-        url_fiji = 'https://downloads.imagej.net/fiji/latest/fiji-win64.zip'
+        url_fiji = 'https://downloads.imagej.net/fiji/latest/fiji-latest-win64-jdk.zip'
     else:
         raise NotImplementedError(f'Platform {platform.system()} not supported')
     download(url_fiji, os.path.join(path_to_download_directory, 'fiji.zip'), overwrite)
