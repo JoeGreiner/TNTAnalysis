@@ -1,5 +1,3 @@
-import numpy as np
-np.bool8 = np.bool
 import glob
 import logging
 import subprocess
