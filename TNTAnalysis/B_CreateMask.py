@@ -122,7 +122,7 @@ def run_GUI():
 if __name__ == '__main__':
 
     git_is_uptodate = check_if_git_uptodate()
-    if not git_is_uptodate:
+    if git_is_uptodate is False:
         print("The local git repository is not up to date with the remote repository. Please update the git repository.")
         app = QApplication([])
         msg = QMessageBox()
