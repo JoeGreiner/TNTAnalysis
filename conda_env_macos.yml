@@ -1,0 +1,40 @@
+name: TNTAnalysis
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python=3.11
+  - bokeh==3.4.1
+  - chardet
+  - ffmpeg
+  - gitpython
+  - pyimagej
+  - openjdk=11
+  - itk
+  - matplotlib
+  - pyqt=5
+  - nibabel
+  - numpy==1.26.4
+  - pandas
+  - readlif
+  - requests
+  - scienceplots
+  - scikit-learn
+  - scipy
+  - seaborn
+  - SimpleITK
+  - scikit-image
+  - tifffile
+  - pytorch
+  - tqdm
+  - xlsxwriter
+  - python-wget
+  - openpyxl
+  - pip
+  - pip:
+      - ffmpeg-python
+      - nnunetv2
+      - napari[pyqt5]
+      - napari-aicsimageio
+      - napari-nifti
+      - blosc2
