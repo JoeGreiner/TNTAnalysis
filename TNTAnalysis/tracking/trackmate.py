@@ -3,6 +3,7 @@ from os import chdir, getcwd, makedirs, environ
 from os.path import join, exists, basename
 import pandas as pd
 from tqdm import tqdm
+from tifffile import TiffFile
 import scyjava as sj
 import imagej
 
@@ -193,6 +194,16 @@ def track_everything_v2(pathlist, variable_config, output_folder="output_trackin
 
             # add frame duration and resolution to the track features
             df_track_ids_via_list["FRAME_DURATION"] = res_time
+            with TiffFile(image_path) as tif:
+                time_metadata = tif.imagej_metadata or {}
+            df_track_ids_via_list['FRAME_DURATION_SOURCE'] = time_metadata.get('frame_interval_source', 'tiff_metadata')
+            for column, key in (
+                ('DELTA_T_MIN_S', 'delta_t_min_s'),
+                ('DELTA_T_MAX_S', 'delta_t_max_s'),
+                ('CYCLE_TIME_S', 'cycle_time_s'),
+                ('SEQUENCE_CYCLE_TIME_S', 'sequence_cycle_time_s'),
+            ):
+                df_track_ids_via_list[column] = time_metadata.get(key)
             df_track_ids_via_list["RESOLUTION_X"] = res_width
             df_track_ids_via_list["RESOLUTION_Y"] = res_height
             df_track_ids_via_list['TRACK_Y_LOCATION_INDEX'] = df_track_ids_via_list['TRACK_Y_LOCATION'] / res_height
