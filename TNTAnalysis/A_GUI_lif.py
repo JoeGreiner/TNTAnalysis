@@ -6,18 +6,18 @@ from os.path import join
 from tempfile import TemporaryDirectory
 from typing import List
 import torch
-from readlif.reader import LifFile
 
-from PyQt5.QtCore import QThread, Qt, QSettings, QUrl, pyqtSignal
-from PyQt5.QtGui import QDesktopServices, QFont, QPalette
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLineEdit, QPushButton, QFileDialog, QApplication, QLabel, \
+from PyQt6.QtCore import QThread, Qt, QSettings, QUrl, pyqtSignal
+from PyQt6.QtGui import QDesktopServices, QFont, QPalette
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLineEdit, QPushButton, QFileDialog, QApplication, QLabel, \
     QHBoxLayout, QCheckBox, QDoubleSpinBox, QMessageBox, QProgressDialog, QTableWidget, QTableWidgetItem, \
     QAbstractItemView, QHeaderView
 
 from TNTAnalysis.fileIO.download_files import download_fiji, download_model, download_testfiles
 from TNTAnalysis.fileIO.git import check_if_git_uptodate
-from TNTAnalysis.fileIO.lif_preperation import (prepare_single_lif_to_nii, combine_lif_and_matching_prediction,
-                                              get_frame_timing, apply_frame_duration_override, FrameTimingError)
+from TNTAnalysis.fileIO.lif_preperation import prepare_single_lif_to_nii, combine_lif_and_matching_prediction
+from TNTAnalysis.fileIO.lif import (open_lif, get_lif_series_metadata, get_frame_timing,
+                                   apply_frame_duration_override, FrameTimingError)
 import os
 
 from TNTAnalysis.tracking.trackmate import track_everything_v2
@@ -158,7 +158,7 @@ class DownloadProgressDialog(QProgressDialog):
     def __init__(self, title, download_function, directory, parent=None):
         super().__init__(f'Connecting...\n{directory}', None, 0, 0, parent)
         self.setWindowTitle(title)
-        self.setWindowFlags(Qt.Dialog | Qt.CustomizeWindowHint | Qt.WindowTitleHint)
+        self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.CustomizeWindowHint | Qt.WindowType.WindowTitleHint)
         self.setAutoClose(False)
         self.setAutoReset(False)
         self.directory = directory
@@ -374,8 +374,8 @@ class GUI_TNT_Analysis(QWidget):
 
         ## Input files and folders
         self.dropLabel = QLabel("Drop LIF files or folders here", self)
-        self.dropLabel.setAlignment(Qt.AlignCenter)
-        font = QFont("Arial", 20, QFont.Bold)
+        self.dropLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        font = QFont("Arial", 20, QFont.Weight.Bold)
         self.dropLabel.setFont(font)
         self.dropLabel.setStyleSheet("background-color: #f0f0f0; border: 2px dashed #888888; color: #888888;")
         self.dropLabel.setGeometry(0, 0, figure_width, 300)
@@ -392,7 +392,7 @@ class GUI_TNT_Analysis(QWidget):
 
         self.progressLabel = QLabel('Analysing...')
         self.progressLabel.hide()
-        self.progressLabel.setAlignment(Qt.AlignCenter)
+        self.progressLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.fileCountLabel = QLabel('')
         self.frameTimingPanel = QWidget()
@@ -414,11 +414,11 @@ class GUI_TNT_Analysis(QWidget):
         self.frameTimingTable.setHorizontalHeaderLabels([
             'File', '# Channels', '# Timesteps', 'Automatic\ninterval (s)', 'Min Δt (s)', 'Max Δt (s)',
             'CycleTime (s)', 'Sequence\nmaster (s)', 'Automatic source', 'Used\ninterval (s)'])
-        self.frameTimingTable.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.frameTimingTable.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.frameTimingTable.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.frameTimingTable.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.frameTimingTable.verticalHeader().hide()
-        self.frameTimingTable.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
-        self.frameTimingTable.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.frameTimingTable.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        self.frameTimingTable.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.frameTimingTable.setMinimumHeight(180)
         timing_layout.addWidget(self.frameTimingTable)
         self.override_frame_duration.toggled.connect(self.updateFrameTimingPreview)
@@ -439,9 +439,9 @@ class GUI_TNT_Analysis(QWidget):
         self.duplicate_file_names = set()
 
     def printSettings(self):
-        logging.info(f"Settings:")
+        logging.debug("Settings:")
         for key in self.settings.allKeys():
-            logging.info(f"{key}: {self.settings.value(key)}")
+            logging.debug("%s: %s", key, self.settings.value(key))
 
     def loadSettings(self):
         output_path = self.settings.value("outputPath", "")
@@ -672,9 +672,8 @@ class GUI_TNT_Analysis(QWidget):
         for path in files:
             timing = {'channel_count': None, 'timestep_count': None}
             try:
-                lif_file = LifFile(path)
-                series = lif_file.image_list[0]
-                timing.update(channel_count=series['channels'], timestep_count=series['dims'].t)
+                lif_file = open_lif(path)
+                timing.update(get_lif_series_metadata(lif_file))
                 timing.update(get_frame_timing(lif_file))
                 self.frame_timings.append((timing, None))
             except FrameTimingError as error:
@@ -743,11 +742,11 @@ class GUI_TNT_Analysis(QWidget):
                     tooltip += '\nAnother input file has the same name. Use unique filenames to avoid overwriting results.'
                 item.setToolTip(tooltip)
                 if column not in (0, 8):
-                    item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+                    item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
                 self.frameTimingTable.setItem(row, column, item)
         status = f'Number of files found: {len(self.files_to_analyse)}'
         if multichannel_files:
-            warning_color = '#f6c344' if self.palette().color(QPalette.Window).lightness() < 128 else '#8a4f00'
+            warning_color = '#f6c344' if self.palette().color(QPalette.ColorRole.Window).lightness() < 128 else '#8a4f00'
             status += (f' — <span style="color: {warning_color};">'
                        f'First channel only for {multichannel_files} multichannel file(s).</span>')
         if timing_errors:
@@ -788,7 +787,7 @@ class GUI_TNT_Analysis(QWidget):
 
 
 def run_GUI():
-    logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(message)s')
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
     app = QApplication([])
 

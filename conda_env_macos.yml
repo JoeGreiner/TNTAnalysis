@@ -3,38 +3,12 @@ channels:
   - conda-forge
   - nodefaults
 dependencies:
-  - python=3.11
-  - bokeh==3.4.1
-  - chardet
-  - ffmpeg
-  - gitpython
-  - pyimagej
-  - openjdk=11
-  - itk
-  - matplotlib
-  - pyqt=5
-  - nibabel
-  - numpy==1.26.4
-  - pandas
-  - readlif
-  - requests
-  - scienceplots
-  - scikit-learn
-  - scipy
-  - seaborn
-  - SimpleITK
-  - scikit-image
-  - tifffile
-  - pytorch
-  - tqdm
-  - xlsxwriter
-  - python-wget
-  - openpyxl
+  - python=3.12
   - pip
+  - openjdk=11
+  - ffmpeg
+  - pyqt6>=6.8,<7
+  # Keep napari 0.10.0's Qt exclusions when installing Qt through Conda.
+  - qt6-main>=6.8,!=6.11.0,!=6.11.1,<7
   - pip:
-      - ffmpeg-python
-      - nnunetv2
-      - napari[pyqt5]
-      - napari-aicsimageio
-      - napari-nifti
-      - blosc2
+      - -r requirements.txt

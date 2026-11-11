@@ -1,6 +1,6 @@
 import logging
 import git
-from PyQt5.QtCore import QSettings
+from PyQt6.QtCore import QSettings
 
 def check_if_git_uptodate():
     settings = QSettings("JoeGreiner", "TNT_Analysis_GUI")

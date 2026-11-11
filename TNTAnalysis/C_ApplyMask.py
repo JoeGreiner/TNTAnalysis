@@ -9,9 +9,9 @@ from TNTAnalysis.fileIO.xlsx import format_excel_sheet
 import logging
 
 
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QFont
-from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QLineEdit, QPushButton, QApplication, QLabel, QTextEdit,
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QFont
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QLineEdit, QPushButton, QApplication, QLabel, QTextEdit,
                              QHBoxLayout,
                              QMessageBox)
 
@@ -31,7 +31,7 @@ def post_process_tracking_data(path_to_label_mask, path_to_xlsx):
     as long as track filtering is not repeated, the xml files can be used to visualize the tracks in trackmate
 
     """
-    logging.basicConfig(level=logging.DEBUG,
+    logging.basicConfig(level=logging.INFO,
                         format='%(asctime)s - %(levelname)s - %(message)s')
 
     # path_to_label_mask = '/Users/greiner/label_example.tif'
@@ -129,8 +129,8 @@ class GUI_TNT_Analysis(QWidget):
 
         ## Drop Folder for TIFs Selection
         self.dropLabelField = QLabel("Drop one label mask (.tif) and tracking results (.xlsx) here", self)
-        self.dropLabelField.setAlignment(Qt.AlignCenter)
-        font = QFont("Arial", 20, QFont.Bold)
+        self.dropLabelField.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        font = QFont("Arial", 20, QFont.Weight.Bold)
         self.dropLabelField.setFont(font)
         self.dropLabelField.setStyleSheet("background-color: #f0f0f0; border: 2px dashed #888888; color: #888888;")
         self.dropLabelField.setGeometry(0, 0, figure_width, 300)

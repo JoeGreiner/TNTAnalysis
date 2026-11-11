@@ -1,12 +1,13 @@
-from os.path import join
+from pathlib import Path
+import re
 import napari
 import numpy as np
 from magicgui import magicgui
 from napari.layers import Image, Labels
 import skimage
 
-from PyQt5.QtWidgets import QMessageBox, QApplication
-from PyQt5.QtCore import QSettings
+from PyQt6.QtWidgets import QMessageBox, QApplication
+from PyQt6.QtCore import QSettings
 
 from TNTAnalysis.fileIO.git import check_if_git_uptodate
 
@@ -29,17 +30,9 @@ def run_GUI():
 
     @magicgui(auto_call=False)
     def add_shape_layer(layer: Image):
-        layer_shape = layer.data.shape
-        layer_scale = layer.scale
-        if len(layer_shape) == 3:
-            # make 2D mask layer
-            layer_shape = layer_shape[1:]
-            layer_scale = layer_scale[1:]
-        elif len(layer_shape) == 2:
-            pass
-        else:
-            raise ValueError('Layer shape is not 2D or 3D')
-
+        # The reader may retain singleton T/C/Z axes; the mask is always spatial YX.
+        layer_shape = layer.data.shape[-3:-1] if layer.rgb else layer.data.shape[-2:]
+        layer_scale = layer.scale[-2:]
         dummy_data = np.zeros(shape=layer_shape, dtype=np.uint8)
         mask_layer_to_save = viewer.add_labels(dummy_data, name=layer.name + '_mask', scale=layer_scale)
         mask_layer_to_save.brush_size = 150
@@ -47,15 +40,16 @@ def run_GUI():
     # rotate layer by 90 degrees in anticlockwise direction
     @magicgui(auto_call=False)
     def rotate_layer(layer: Image):
-        layer.data = np.rot90(layer.data, k=1)
+        layer.data = np.rot90(layer.data, k=1, axes=(-3, -2) if layer.rgb else (-2, -1))
+        layer.scale = (*layer.scale[:-2], layer.scale[-1], layer.scale[-2])
 
     # add gausian blurr option, with slider from 0 to 5
     @magicgui(auto_call=False,
               sigma={'widget_type': 'IntSlider', 'min': 0, 'max': 10})
     def add_gaussian_blur(layer: Image, sigma: float = 5) -> Image:
         # if 3D return too, its probably the reflection image you don't want to blur
-        if len(layer.data.shape) == 3:
-            print('3D image, not blurring!')
+        if layer.data.ndim != 2:
+            print('Select a 2D image for Gaussian blur.')
             return Image(layer.data, scale=layer.scale, name=layer.name + '_blurred')
         # global original_img
         # if isinstance(original_img, type(None)):
@@ -68,7 +62,7 @@ def run_GUI():
             #     layer.data = layer.data * 255
             # else:
             #     layer.data = original_img.copy()
-            min_contrast = np.min(blurred_img) * 30
+            min_contrast = float(np.min(blurred_img)) * 30
             max_contrast = np.max(blurred_img)
             # layer.contrast_limits = [min_contrast, max_contrast]
 
@@ -82,41 +76,30 @@ def run_GUI():
               directory={'widget_type': 'FileEdit', 'mode': 'd'}
               )
     def save_mask_layer(layer: Labels, directory=save_mask_layer_directory):
-        series_name = layer.name
-        series_name = series_name.replace(' :: ', '_')
-        dock_widgets = viewer.window._dock_widgets
-        dock_widget_keys = dock_widgets.keys()
-        dock_widgets_with_lif_in_name = [key for key in dock_widget_keys if '.lif' in key]
-        if len(dock_widgets_with_lif_in_name) == 1:
-            lif_name = dock_widgets_with_lif_in_name[0].replace(' :: Scenes', '').replace('.lif', '_lif_')
-        elif len(dock_widgets_with_lif_in_name) == 0:
-            lif_name = ""
-        else:
-            lif_name = dock_widgets_with_lif_in_name[-1].replace(' :: Scenes', '').replace('.lif', '_lif_')
-
-        if isinstance(layer, type(None)):
+        if layer is None:
             print('No mask layer to save')
             return
+        series_name = re.sub(r'[\\/:*?"<>|]', '_', layer.name.replace(' :: ', '_'))
 
         # save directory to qt settings
         settings = QSettings("JoeGreiner", "TNT_Analysis_GUI")
         settings.setValue('napari_create_mask_output_directory', directory)
 
-        output_path = join(directory, f'{lif_name}{series_name}.tif')
-        layer.save(join(directory, output_path))
+        output_path = Path(directory) / f'{series_name}.tif'
+        layer.save(str(output_path))
 
         msg = QMessageBox()
         msg.setWindowTitle("Save Mask Layer")
         msg.setText(f"Saved {series_name} to {output_path}")
-        msg.exec_()
+        msg.exec()
         print(f'Saved "{series_name}" to {output_path}')
         # set status
         viewer.status = f'Saved "{series_name}" to {output_path}'
 
-    viewer.window.add_dock_widget(add_shape_layer, name='0: Add Labels', add_vertical_stretch=True)
-    viewer.window.add_dock_widget(rotate_layer, name='1: Rotate Layer', add_vertical_stretch=True)
-    viewer.window.add_dock_widget(add_gaussian_blur, name='2: Gaussian Blur', add_vertical_stretch=True)
-    viewer.window.add_dock_widget(save_mask_layer, name='3: Save Mask Layer', add_vertical_stretch=True)
+    viewer.window.add_dock_widget(add_shape_layer, name='0: Add Labels')
+    viewer.window.add_dock_widget(rotate_layer, name='1: Rotate Layer')
+    viewer.window.add_dock_widget(add_gaussian_blur, name='2: Gaussian Blur')
+    viewer.window.add_dock_widget(save_mask_layer, name='3: Save Mask Layer')
     napari.run()
 
 if __name__ == '__main__':

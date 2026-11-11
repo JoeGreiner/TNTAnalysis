@@ -6,7 +6,7 @@ This repository contains software for the deep learning-based analysis of tunnel
 
 ## Installation
 
-Requirements: Windows or Linux (tested on Ubuntu 22.10 and Windows 11 Pro). Modern PyTorch-compatible graphic card (tested on NVIDIA 2080TI, 3090, 4090).
+Requirements: Windows, Linux (targeting Ubuntu 24.04), or macOS. Create a fresh Conda environment for Python 3.12, NumPy 2 and PyQt6. GPU acceleration requires a compatible PyTorch build and driver.
 <details>
 <summary>Windows</summary>
 
@@ -74,7 +74,7 @@ TNT_3_ApplyMask.exe
 ```
  2. Using shortcuts:
 
-For Windows-based systems, the install script sets up shortcuts in the same folder as the repository. You can run the shortcuts from there, or copy them to a location of your choice.
+For Windows-based systems, `python setup.py shortcuts` sets up shortcuts in the same folder as the repository. You can run the shortcuts from there, or copy them to a location of your choice.
 </details>
 
 <details>
@@ -92,7 +92,7 @@ TNT_3_ApplyMask
 ```
  2. Using shortcuts:
 
-For Linux-based systems, the install script sets up .desktop files for your users. You should be able to find the shortcuts in your application menu, i.e. by using the super key (application search), and typing "TNT_".
+For Linux-based systems, `python setup.py shortcuts` sets up .desktop files for your users. You should be able to find the shortcuts in your application menu, i.e. by using the super key (application search), and typing "TNT_".
 
 [!](https://github.com/JoeGreiner/TNTAnalysis/assets/24453528/9fc4d145-6569-42d6-8126-fafff8c502e0)
 
@@ -138,12 +138,12 @@ The Analysis process is subdivided into three main steps:
 ## Step 2: Create Masking
 
 0. Run TNT_2_CreateMask as described in the "Running Individual Steps" section.
-1. Drag and drop in the timeseries. Optional: add additional files (e.g. fluorescence of virus-positive cells). 
+1. Drag and drop in the timeseries and select **ndevio** if asked for a reader. Optional: add additional files (e.g. fluorescence of virus-positive cells).
 2. Using widget 0 'Add Labels', create a new layer by using the widget on the top right. The mask will be created in this layer.
 3. Optional: Make sure the additional images are registered to the timeseries, for rotations, use widget 1 'Rotate Layer' on the right (useful to match LAS X Navigator's inherent rotation).
 4. Optional: If you use photon-counting data, you may want to use widget 2 'Gaussian Blur' to aid visualisation.
 5. Select the new layer and draw the mask using the brush tool.
-6. Using widget 3 'Save Mask Layer,' select an output directory and press run. The mask will be saved as a .tif file with the same prefix as the time series.
+6. Using widget 3 'Save Mask Layer,' select an output directory and press run. The mask will be saved as a .tif file using the mask layer name.
 
 ## Step 3: Apply Masking
 

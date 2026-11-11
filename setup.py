@@ -1,13 +1,21 @@
-from PyQt5.QtCore import QSettings
-from setuptools import setup, find_packages
-from setuptools.command.install import install
+from pathlib import Path
+from setuptools import setup, find_packages, Command
 import os
 import platform
 import shutil
 
-class LocalSetup(install):
+class CreateShortcuts(Command):
+    description = 'Configure this checkout and create desktop shortcuts after installation'
+    user_options = []
+
+    def initialize_options(self):
+        pass
+
+    def finalize_options(self):
+        pass
+
     def run(self):
-        install.run(self)
+        from PyQt6.QtCore import QSettings
 
         settings = QSettings("JoeGreiner", "TNT_Analysis_GUI")
         git_dir = os.path.abspath(os.path.dirname(__file__))
@@ -115,8 +123,10 @@ if __name__ == '__main__':
         name='TNTAnalysis',
         version='0.1',
         packages=find_packages(),
+        python_requires='>=3.12',
+        install_requires=Path(__file__).with_name('requirements.txt').read_text().splitlines(),
         cmdclass={
-            'install': LocalSetup,
+            'shortcuts': CreateShortcuts,
         },
         entry_points={
             'console_scripts': [
