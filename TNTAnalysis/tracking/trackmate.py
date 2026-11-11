@@ -118,6 +118,7 @@ def track_everything_v2(pathlist, variable_config, output_folder="output_trackin
             writer = TmXmlWriter(out_file)
             writer.appendModel(track_model)
             writer.appendSettings(track_settings)
+            writer.appendDisplaySettings(display_settings_io_class.readUserDefault())
             writer.writeToFile()
 
         # Display results

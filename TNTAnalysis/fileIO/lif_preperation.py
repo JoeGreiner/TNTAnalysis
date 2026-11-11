@@ -321,6 +321,9 @@ def combine_lif_and_matching_prediction(lif_path, prediction_folder, output_fold
     if not exists(output_folder):
         makedirs(output_folder)
 
+    gray_lut = np.tile(np.arange(256, dtype=np.uint8), (3, 1))
+    red_lut = gray_lut.copy()
+    red_lut[1:] = 0
     tifffile.imwrite(
         output_path_combined,
         combined_data,
@@ -332,6 +335,7 @@ def combine_lif_and_matching_prediction(lif_path, prediction_folder, output_fold
             'fps': 1 / frame_interval_s,
             'axes': 'TCYX',
             'mode': 'composite',
+            'LUTs': [red_lut, gray_lut],
             **{key: value for key, value in frame_timing.items() if value is not None},
         },
     )
