@@ -7,8 +7,8 @@ from typing import List
 import torch
 from readlif.reader import LifFile
 
-from PyQt5.QtCore import QThread, Qt, QSettings, pyqtSignal
-from PyQt5.QtGui import QFont
+from PyQt5.QtCore import QThread, Qt, QSettings, QUrl, pyqtSignal
+from PyQt5.QtGui import QDesktopServices, QFont
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLineEdit, QPushButton, QFileDialog, QApplication, QLabel, \
     QHBoxLayout, QCheckBox, QDoubleSpinBox, QMessageBox, QProgressDialog, QTableWidget, QTableWidgetItem, \
     QAbstractItemView, QHeaderView
@@ -286,6 +286,12 @@ class GUI_TNT_Analysis(QWidget):
         self.browseButton.clicked.connect(self.showFileDialogOutputPath)
         self.row_layout.addWidget(self.browseButton)
 
+        self.open_results_button = QPushButton("Open Results Folder", self)
+        self.open_results_button.setEnabled(False)
+        self.open_results_button.clicked.connect(self.openResultsFolder)
+        self.row_layout.addWidget(self.open_results_button)
+        self.output_folder.textChanged.connect(self.updateResultsFolderButton)
+
         ## NNU dataset number
         self.row_layout_frameduration = QHBoxLayout()
         layout.addLayout(self.row_layout_frameduration)
@@ -457,6 +463,20 @@ class GUI_TNT_Analysis(QWidget):
             self.output_folder.setText(dir_path)
             self.settings.setValue("outputPath", dir_path)
 
+    def updateResultsFolderButton(self):
+        output_folder = self.output_folder.text()
+        self.open_results_button.setEnabled(
+            bool(output_folder) and os.path.isdir(join(output_folder, 'output_tracking')))
+
+    def openResultsFolder(self):
+        self.updateResultsFolderButton()
+        if not self.open_results_button.isEnabled():
+            QMessageBox.warning(self, 'Results folder unavailable', 'The results folder does not exist yet.')
+            return
+        results_folder = os.path.abspath(join(self.output_folder.text(), 'output_tracking'))
+        if not QDesktopServices.openUrl(QUrl.fromLocalFile(results_folder)):
+            QMessageBox.warning(self, 'Cannot open results folder', f'Could not open:\n{results_folder}')
+
     def showFileDialogFijiPath(self):
         folder_to_fiji = QFileDialog.getExistingDirectory(self, 'Select Fiji Executable')
         if folder_to_fiji:
@@ -581,6 +601,7 @@ class GUI_TNT_Analysis(QWidget):
     def analysisFinished(self):
         self.is_analysis_running = False
         self.hideProgressBar()
+        self.updateResultsFolderButton()
         if self.analysisThread.error is not None:
             for widget in self.widgets_to_hide:
                 widget.show()
