@@ -18,6 +18,14 @@ import os
 from TNTAnalysis.tracking.trackmate import track_everything_v2
 
 
+def get_prediction_device():
+    if torch.cuda.is_available():
+        return 'cuda'
+    if torch.backends.mps.is_available():
+        return 'mps'
+    return 'cpu'
+
+
 def run_analysis(list_tifs: list,
                  path_to_nnunet_model: str,
                  path_to_output_folder: str,
@@ -57,7 +65,7 @@ def run_analysis(list_tifs: list,
 
     command_str = (
         f'nnUNetv2_predict -i "{path_to_output_folder}" -o "{output_folder_predictions}" -d {nnu_dataset_number} -c 3d_fullres'
-        f" -step_size {overlap}")
+        f" -step_size {overlap} -device {get_prediction_device()}")
     if disable_tta:
         command_str += " --disable_tta"
     if continue_prediction:
@@ -188,19 +196,7 @@ class GUI_TNT_Analysis(QWidget):
     def __init__(self):
         super(GUI_TNT_Analysis, self).__init__()
 
-        if torch.cuda.is_available():
-            logging.info('GPU available')
-        else:
-            logging.info('No GPU available')
-            msg = QMessageBox()
-            msg.setWindowTitle("No GPU Support Available")
-            msg.setText("No GPU support available. Please make sure to install GPU-supported version of PyTorch.")
-            msg.exec()
-            exit()
-
-
-
-
+        logging.info(f'Prediction device: {get_prediction_device()}')
         self.settings = QSettings("JoeGreiner", "TNT_Analysis_GUI")
         self.printSettings()
         self.initUI()
