@@ -1,3 +1,4 @@
+import logging
 import git
 from PyQt5.QtCore import QSettings
 
@@ -10,14 +11,9 @@ def check_if_git_uptodate():
     remote_branch = f'origin/{local_branch}'
     repo.remotes.origin.fetch()
 
-    local_commit = repo.commit(local_branch)
-    remote_commit = repo.commit(remote_branch)
-
-    if local_commit == remote_commit:
-        print("The local branch is up to date with the remote branch.")
-        return True
-    else:
-        behind_commits = list(repo.iter_commits(f'{local_branch}..{remote_branch}'))
-        print(f"The local branch is behind the remote branch by {len(behind_commits)} commits.")
-        return False
+    ahead, behind = map(int, repo.git.rev_list(
+        '--left-right', '--count', f'{local_branch}...{remote_branch}').split())
+    logging.info('Git status: %s is %d commit(s) ahead and %d behind %s.',
+                 local_branch, ahead, behind, remote_branch)
+    return behind == 0
 
