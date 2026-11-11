@@ -1,18 +1,22 @@
 import glob
 import logging
+from math import isfinite
 import subprocess
 from os.path import join
 from typing import List
 import torch
+from readlif.reader import LifFile
 
 from PyQt5.QtCore import QThread, Qt, QSettings, pyqtSignal
 from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLineEdit, QPushButton, QFileDialog, QApplication, QLabel, \
-    QTextEdit, QHBoxLayout, QCheckBox, QDoubleSpinBox, QMessageBox, QProgressDialog
+    QHBoxLayout, QCheckBox, QDoubleSpinBox, QMessageBox, QProgressDialog, QTableWidget, QTableWidgetItem, \
+    QAbstractItemView, QHeaderView
 
 from TNTAnalysis.fileIO.download_files import download_fiji, download_model, download_testfiles
 from TNTAnalysis.fileIO.git import check_if_git_uptodate
-from TNTAnalysis.fileIO.lif_preperation import prepare_single_lif_to_nii, combine_lif_and_matching_prediction
+from TNTAnalysis.fileIO.lif_preperation import (prepare_single_lif_to_nii, combine_lif_and_matching_prediction,
+                                              get_frame_timing, apply_frame_duration_override)
 import os
 
 from TNTAnalysis.tracking.trackmate import track_everything_v2
@@ -30,7 +34,7 @@ def run_analysis(list_tifs: list,
                  path_to_nnunet_model: str,
                  path_to_output_folder: str,
                  fiji_path: str,
-                 frame_duration: int,
+                 frame_duration: float,
                  nnu_dataset_number: int,
                  overlap: float = 0.5,
                  continue_prediction: bool = False,
@@ -43,8 +47,8 @@ def run_analysis(list_tifs: list,
         raise FileNotFoundError(f"Could not find the output folder at {path_to_output_folder}")
     if not os.path.exists(fiji_path):
         raise FileNotFoundError(f"Could not find the Fiji executable at {fiji_path}")
-    if frame_duration:
-        assert frame_duration > 0, "The frames duration need to be a positive number"
+    if frame_duration is not None and (not isfinite(frame_duration) or frame_duration <= 0):
+        raise ValueError('The frame interval must be a finite positive number of seconds.')
     assert nnu_dataset_number > 0, "The nnU-Net dataset number needs to be a positive number"
 
     for img_path in list_tifs:
@@ -83,7 +87,8 @@ def run_analysis(list_tifs: list,
     for img_path in list_tifs:
         combined_file_path = combine_lif_and_matching_prediction(lif_path=img_path,
                                                                  prediction_folder=output_folder_predictions,
-                                                                 output_folder=output_folder_tracking)
+                                                                 output_folder=output_folder_tracking,
+                                                                 frame_duration=frame_duration)
         list_of_combined_files.append(combined_file_path)
 
     # track result
@@ -189,7 +194,7 @@ class AnalysisThread(QThread):
                  nnunet_dataset_number: str,
                  path_to_output_folder: str,
                  fiji_path: str,
-                 frame_duration: str = None,
+                 frame_duration: float = None,
                  overlap: float = 0.5,
                  continue_prediction: bool = False,
                  disable_tta: bool = False,
@@ -197,9 +202,10 @@ class AnalysisThread(QThread):
                  number_processes: int = 1):
         super().__init__()
         nnunet_dataset_number = int(nnunet_dataset_number)
-        if frame_duration:
+        if frame_duration is not None:
             frame_duration = float(frame_duration)
-            assert frame_duration > 0, "The frames per second need to be a positive number"
+            if not isfinite(frame_duration) or frame_duration <= 0:
+                raise ValueError('The frame interval must be a finite positive number of seconds.')
 
         if not os.path.exists(path_to_output_folder):
             os.makedirs(path_to_output_folder)
@@ -260,8 +266,8 @@ class GUI_TNT_Analysis(QWidget):
 
     def initUI(self):
         self.setWindowTitle('Automatic TNT Analysis')
-        figure_width = 800
-        figure_height = 400
+        figure_width = 1300
+        figure_height = 650
         self.setGeometry(300, 300, figure_width, figure_height)
 
         layout = QVBoxLayout()
@@ -281,15 +287,9 @@ class GUI_TNT_Analysis(QWidget):
         self.browseButton.clicked.connect(self.showFileDialogOutputPath)
         self.row_layout.addWidget(self.browseButton)
 
-        ## Framerate Selection and nnu dataset number
+        ## NNU dataset number
         self.row_layout_frameduration = QHBoxLayout()
         layout.addLayout(self.row_layout_frameduration)
-
-        # self.frameduration_label = QLabel("Frame Duration (sec):", self)
-        # self.row_layout_frameduration.addWidget(self.frameduration_label)
-        # self.frame_duration = QLineEdit()
-        # self.row_layout_frameduration.addWidget(self.frame_duration)
-        # self.frame_duration.textChanged.connect(self.saveSettingsFrameDuration)
 
         self.nnudataset_label = QLabel("nnU-Net Dataset Number:", self)
         self.row_layout_frameduration.addWidget(self.nnudataset_label)
@@ -388,15 +388,43 @@ class GUI_TNT_Analysis(QWidget):
         self.progressLabel.setAlignment(Qt.AlignCenter)
 
         self.fileCountLabel = QLabel('')
-        self.fileListTextEdit = QTextEdit()
+        self.frameTimingPanel = QWidget()
+        timing_layout = QVBoxLayout(self.frameTimingPanel)
+        timing_layout.setContentsMargins(0, 0, 0, 0)
+        timing_controls = QHBoxLayout()
+        self.override_frame_duration = QCheckBox('Override frame interval')
+        timing_controls.addWidget(self.override_frame_duration)
+        self.frame_duration = QDoubleSpinBox()
+        self.frame_duration.setDecimals(6)
+        self.frame_duration.setRange(0.000001, 1_000_000)
+        self.frame_duration.setValue(1.0)
+        self.frame_duration.setSuffix(' s')
+        self.frame_duration.setEnabled(False)
+        timing_controls.addWidget(self.frame_duration)
+        timing_controls.addStretch()
+        timing_layout.addLayout(timing_controls)
+        self.frameTimingTable = QTableWidget(0, 10)
+        self.frameTimingTable.setHorizontalHeaderLabels([
+            'File', '# Channels', '# Timesteps', 'Automatic\ninterval (s)', 'Min Δt (s)', 'Max Δt (s)',
+            'CycleTime (s)', 'Sequence\nmaster (s)', 'Automatic source', 'Used\ninterval (s)'])
+        self.frameTimingTable.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.frameTimingTable.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.frameTimingTable.verticalHeader().hide()
+        self.frameTimingTable.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.frameTimingTable.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.frameTimingTable.setMinimumHeight(180)
+        timing_layout.addWidget(self.frameTimingTable)
+        self.override_frame_duration.toggled.connect(self.updateFrameTimingPreview)
+        self.frame_duration.valueChanged.connect(self.updateFrameTimingPreview)
 
         self.widgets_to_hide = [self.pathLineEdit, self.startAnalysisButton,
-                                self.fileCountLabel, self.fileListTextEdit]
+                                self.fileCountLabel, self.frameTimingPanel]
 
         self.setAcceptDrops(True)
         self.is_analysis_running = False
 
         self.files_to_analyse = []
+        self.frame_timings = []
 
     def printSettings(self):
         logging.info(f"Settings:")
@@ -406,8 +434,6 @@ class GUI_TNT_Analysis(QWidget):
     def loadSettings(self):
         output_path = self.settings.value("outputPath", "")
         self.output_folder.setText(output_path)
-        # frame_duration = self.settings.value("frameDuration", "")
-        # self.frame_duration.setText(frame_duration)
         nnunet_path = self.settings.value("nnunetPath", "")
         self.nnunet_folder.setText(nnunet_path)
         fiji_path = self.settings.value("fijiPath", "")
@@ -458,9 +484,6 @@ class GUI_TNT_Analysis(QWidget):
 
     def saveSettingsStepSize(self):
         self.settings.setValue("stepSize", self.step_size.value())
-
-    # def saveSettingsFrameDuration(self):
-    #     self.settings.setValue("frameDuration", self.frame_duration.text())
 
     def restoreDefaultPredictionSettings(self):
         self.disable_tta.setChecked(False)
@@ -533,16 +556,15 @@ class GUI_TNT_Analysis(QWidget):
 
 
     def startAnalysis(self):
+        if not self.files_to_analyse or any(error for timing, error in self.frame_timings):
+            return
+        frame_duration = self.frame_duration.value() if self.override_frame_duration.isChecked() else None
         # Set the analysis state to True
         self.is_analysis_running = True
 
         # Change the background color to yellow
         self.setStyleSheet("background-color: #bce0ce;")
 
-
-        # frame_duration = self.frame_duration.text()
-        # if frame_duration == "-1":
-        #     frame_duration = None
 
         self.hideWidgets()  # Hide all visible widgets
         self.showProgressBar()  # Show progress bar and label
@@ -554,7 +576,7 @@ class GUI_TNT_Analysis(QWidget):
                                              overlap=self.step_size.value(),
                                              continue_prediction=self.continue_prediction.isChecked(),
                                              disable_tta=self.disable_tta.isChecked(),
-                                             # frame_duration=frame_duration,
+                                             frame_duration=frame_duration,
                                              multiprocessing=True)  # TODO do multiprocessing gui
         self.analysisThread.finished.connect(self.hideProgressBar)
         self.analysisThread.finished.connect(self.analysisFinished)
@@ -589,8 +611,11 @@ class GUI_TNT_Analysis(QWidget):
         for widget in self.widgets_to_hide:
             widget.show()
         # reset widgets
-        self.fileListTextEdit.setText('')
-        self.fileListTextEdit.hide()
+        self.files_to_analyse = []
+        self.frame_timings = []
+        self.override_frame_duration.setChecked(False)
+        self.frameTimingTable.setRowCount(0)
+        self.frameTimingPanel.hide()
         self.fileCountLabel.setText('')
         self.fileCountLabel.hide()
         self.pathLineEdit.setText('')
@@ -599,29 +624,80 @@ class GUI_TNT_Analysis(QWidget):
         self.dropLabel.show()
 
     def loadFiles(self, directory_path, namefilter=''):
+        if self.is_analysis_running:
+            return
         logging.info(f'Loading files from {directory_path}')
         files = load_files_recursively(directory_path)
 
         if len(namefilter) > 0:
             files = [f for f in files if namefilter in f]
 
+        self.files_to_analyse = files
+        self.frame_timings = []
+        self.override_frame_duration.setChecked(False)
+        for path in files:
+            timing = {'channel_count': None, 'timestep_count': None}
+            try:
+                lif_file = LifFile(path)
+                series = lif_file.image_list[0]
+                timing.update(channel_count=series['channels'], timestep_count=series['dims'].t)
+                timing.update(get_frame_timing(lif_file))
+                self.frame_timings.append((timing, None))
+            except Exception as error:
+                logging.exception('Could not read frame timing for %s', path)
+                self.frame_timings.append((timing, str(error)))
+        if self.frame_timings and not self.frame_timings[0][1]:
+            self.frame_duration.setValue(self.frame_timings[0][0]['frame_interval_s'])
+        self.updateFrameTimingPreview()
+
         if len(files) > 0:
-            if not self.widgetIsAdded(self.fileListTextEdit):
-                self.layout().addWidget(self.fileListTextEdit)
             if not self.widgetIsAdded(self.fileCountLabel):
                 self.layout().addWidget(self.fileCountLabel)
-            self.fileCountLabel.setText(f'Number of files found: {len(files)}')
-            self.fileListTextEdit.setText('\n'.join(files))
-            self.fileListTextEdit.show()
+            if not self.widgetIsAdded(self.frameTimingPanel):
+                self.layout().addWidget(self.frameTimingPanel)
+            self.fileCountLabel.show()
+            self.frameTimingPanel.show()
             if not self.widgetIsAdded(self.startAnalysisButton):
                 self.layout().addWidget(self.startAnalysisButton)
             if not self.widgetIsAdded(self.pathLineEdit):
                 self.layout().addWidget(self.pathLineEdit)
             self.startAnalysisButton.show()
 
-            self.files_to_analyse = files
+        else:
+            self.frameTimingPanel.hide()
+            self.startAnalysisButton.hide()
+            self.fileCountLabel.setText('No LIF files found.')
+            if not self.widgetIsAdded(self.fileCountLabel):
+                self.layout().addWidget(self.fileCountLabel)
+            self.fileCountLabel.show()
 
-
+    def updateFrameTimingPreview(self):
+        override = self.override_frame_duration.isChecked()
+        self.frame_duration.setEnabled(override)
+        frame_duration = self.frame_duration.value() if override else None
+        self.frameTimingTable.setRowCount(len(self.files_to_analyse))
+        errors = 0
+        for row, (path, (timing, error)) in enumerate(zip(self.files_to_analyse, self.frame_timings)):
+            values = [os.path.basename(path), timing['channel_count'], timing['timestep_count']]
+            if error:
+                values += [None, None, None, None, None, 'Timing unavailable', None]
+                errors += 1
+            else:
+                effective_timing = apply_frame_duration_override(timing, frame_duration)
+                source = 'Timestamps' if timing['frame_interval_source'] == 'timestamps' else 'Sequence master'
+                values += [timing['frame_interval_s'], timing['delta_t_min_s'], timing['delta_t_max_s'],
+                           timing['cycle_time_s'], timing['sequence_cycle_time_s'],
+                           source, effective_timing['frame_interval_s']]
+            for column, value in enumerate(values):
+                text = '—' if value is None else (f'{value:.6f}' if isinstance(value, float) else str(value))
+                item = QTableWidgetItem(text)
+                item.setToolTip(f'{path}\n{error}' if error else f'{path}\n{text}')
+                if column not in (0, 8):
+                    item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+                self.frameTimingTable.setItem(row, column, item)
+        self.fileCountLabel.setText(f'Number of files found: {len(self.files_to_analyse)}' +
+                                   (f' — timing unavailable for {errors} file(s); see row tooltips.' if errors else ''))
+        self.startAnalysisButton.setEnabled(bool(self.files_to_analyse) and errors == 0)
 
     def dragEnterEvent(self, e):
         if e.mimeData().hasUrls():

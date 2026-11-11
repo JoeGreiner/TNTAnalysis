@@ -198,6 +198,8 @@ def track_everything_v2(pathlist, variable_config, output_folder="output_trackin
                 time_metadata = tif.imagej_metadata or {}
             df_track_ids_via_list['FRAME_DURATION_SOURCE'] = time_metadata.get('frame_interval_source', 'tiff_metadata')
             for column, key in (
+                ('AUTOMATIC_FRAME_DURATION', 'automatic_frame_interval_s'),
+                ('AUTOMATIC_FRAME_DURATION_SOURCE', 'automatic_frame_interval_source'),
                 ('DELTA_T_MIN_S', 'delta_t_min_s'),
                 ('DELTA_T_MAX_S', 'delta_t_max_s'),
                 ('CYCLE_TIME_S', 'cycle_time_s'),

@@ -121,6 +121,19 @@ def get_frame_timing(lif_file, series_index=0, channel_index=0):
     return timing
 
 
+def apply_frame_duration_override(timing, frame_duration=None):
+    """Keep the automatic timing for comparison when an absolute interval is supplied."""
+    timing = dict(timing)
+    timing['automatic_frame_interval_s'] = timing['frame_interval_s']
+    timing['automatic_frame_interval_source'] = timing['frame_interval_source']
+    if frame_duration is not None:
+        if not np.isfinite(frame_duration) or frame_duration <= 0:
+            raise ValueError('The frame interval must be a finite positive number of seconds.')
+        timing['frame_interval_s'] = float(frame_duration)
+        timing['frame_interval_source'] = 'manual_override'
+    return timing
+
+
 def load_part_of_lif_file(lif_obj, squeeze=True, swap_axes=True):
     if lif_obj.bit_depth[0] == 8:
         data_type = np.uint8
@@ -259,7 +272,7 @@ def prepare_single_lif_to_nii(path_to_file, path_to_output_folder, skip_if_file_
 
 
 
-def combine_lif_and_matching_prediction(lif_path, prediction_folder, output_folder):
+def combine_lif_and_matching_prediction(lif_path, prediction_folder, output_folder, frame_duration=None):
     logging.info(f"Loading the lif file {lif_path}")
     lif_data = read_series_with_read_lif(lif_path, series_index=0, return_only_image_data=False, include_frame_timing=True)
     logger.info(f"Shape before transposing: {lif_data['image_data'].shape}")
@@ -267,7 +280,7 @@ def combine_lif_and_matching_prediction(lif_path, prediction_folder, output_fold
     logger.info(f"Shape after transposing: {lif_data['image_data'].shape}")
 
     scale_x_in_m, scale_y_in_m = [lif_data[key] for key in ['scaleX_in_M', 'scaleY_in_M']]
-    frame_timing = lif_data['frame_timing']
+    frame_timing = apply_frame_duration_override(lif_data['frame_timing'], frame_duration)
     frame_interval_s = frame_timing['frame_interval_s']
     scale_x_in_m = round(scale_x_in_m * 1000000, 3)
     scale_y_in_m = round(scale_y_in_m * 1000000, 3)
