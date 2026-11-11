@@ -2,6 +2,7 @@ from skimage import io as skio
 import numpy as np
 import os
 import pandas as pd
+from xml.etree import ElementTree as ET
 
 from TNTAnalysis.fileIO.git import check_if_git_uptodate
 from TNTAnalysis.fileIO.xlsx import format_excel_sheet
@@ -65,7 +66,9 @@ def post_process_tracking_data(path_to_label_mask, path_to_xlsx):
             return False
         return label_mask[int(y), int(x)] > 0
 
-    df['FALLS_WITHIN_LABEL_MASK'] = df.apply(check_if_coordinate_falls_within_label_mask, axis=1)
+    df['FALLS_WITHIN_LABEL_MASK'] = False
+    if not df.empty:
+        df['FALLS_WITHIN_LABEL_MASK'] = df.apply(check_if_coordinate_falls_within_label_mask, axis=1)
 
     df_falls_within_label_mask = df[df['FALLS_WITHIN_LABEL_MASK']]
     df_falls_outside_label_mask = df[~df['FALLS_WITHIN_LABEL_MASK']]
@@ -73,10 +76,12 @@ def post_process_tracking_data(path_to_label_mask, path_to_xlsx):
     track_ids_falls_within_label_mask = df_falls_within_label_mask['TRACK_ID'].unique()
     track_ids_falls_outside_label_mask = df_falls_outside_label_mask['TRACK_ID'].unique()
 
+    inside_percent = len(df_falls_within_label_mask) / len(df) * 100 if len(df) else 0.0
+    outside_percent = len(df_falls_outside_label_mask) / len(df) * 100 if len(df) else 0.0
     logging.info(
-        f"Found {len(df_falls_within_label_mask)} tracks that fall within the label mask (percentage: {len(df_falls_within_label_mask) / len(df) * 100:.2f}%)")
+        f"Found {len(df_falls_within_label_mask)} tracks that fall within the label mask (percentage: {inside_percent:.2f}%)")
     logging.info(
-        f"Found {len(df_falls_outside_label_mask)} tracks that fall outside the label mask (percentage: {len(df_falls_outside_label_mask) / len(df) * 100:.2f}%)")
+        f"Found {len(df_falls_outside_label_mask)} tracks that fall outside the label mask (percentage: {outside_percent:.2f}%)")
 
     outpath_inside = path_to_xlsx.replace('.xlsx', '_inside_label_mask.xlsx')
     outpath_outside = path_to_xlsx.replace('.xlsx', '_outside_label_mask.xlsx')
@@ -94,48 +99,16 @@ def post_process_tracking_data(path_to_label_mask, path_to_xlsx):
         format_excel_sheet(df_falls_outside_label_mask, writer, 'tracks')
 
     logging.info("Writing xml files with tracks that fall within and outside the label mask")
-    # create two xml files, one for the tracks that fall within the label mask and one for the tracks that fall outside
-    # read the xml until '<FilteredTracks>'
-    xml_before_filtered_tracks = []
-    xml_after_filtered_tracks_end = []
-    is_before_filtered_tracks = True
-    is_after_filtered_tracks = False
-    with open(path_to_xml, 'r') as f:
-        for line in f:
-            if '    </FilteredTracks>' in line:
-                is_after_filtered_tracks = True
-            if '    <FilteredTracks>' in line:
-                is_before_filtered_tracks = False
-
-            if is_before_filtered_tracks:
-                xml_before_filtered_tracks.append(line)
-            if is_after_filtered_tracks:
-                xml_after_filtered_tracks_end.append(line)
-
-    # add '      <TrackID TRACK_ID="0" /> for every trackid that falls within the label mask
-    xml_inside = xml_before_filtered_tracks.copy()
-    xml_outside = xml_before_filtered_tracks.copy()
-    xml_inside.append('    <FilteredTracks>\n')
-    for track_id in track_ids_falls_within_label_mask:
-        xml_inside.append(f'      <TrackID TRACK_ID="{track_id}" />\n')
-
-    xml_outside.append('    <FilteredTracks>\n')
-    for track_id in track_ids_falls_outside_label_mask:
-        xml_outside.append(f'      <TrackID TRACK_ID="{track_id}" />\n')
-
-    xml_inside.extend(xml_after_filtered_tracks_end)
-    xml_outside.extend(xml_after_filtered_tracks_end)
-
-    outpath_inside_xml = path_to_xml.replace('.xml', '_inside_label_mask.xml')
-    outpath_outside_xml = path_to_xml.replace('.xml', '_outside_label_mask.xml')
-
-    logging.info(f"Writing xml file with tracks that fall within the label mask to {outpath_inside_xml}")
-    with open(outpath_inside_xml, 'w') as f:
-        f.writelines(xml_inside)
-
-    logging.info(f"Writing xml file with tracks that fall outside the label mask to {outpath_outside_xml}")
-    with open(outpath_outside_xml, 'w') as f:
-        f.writelines(xml_outside)
+    xml_tree = ET.parse(path_to_xml)
+    filtered_tracks = xml_tree.find('./Model/FilteredTracks')
+    if filtered_tracks is None:
+        raise ValueError(f'TrackMate XML is missing Model/FilteredTracks: {path_to_xml}')
+    for track_ids, suffix in ((track_ids_falls_within_label_mask, '_inside_label_mask'),
+                              (track_ids_falls_outside_label_mask, '_outside_label_mask')):
+        filtered_tracks[:] = [ET.Element('TrackID', TRACK_ID=str(int(track_id))) for track_id in track_ids]
+        output_path_xml = path_to_xml.replace('.xml', suffix + '.xml')
+        logging.info('Writing filtered tracks to %s', output_path_xml)
+        xml_tree.write(output_path_xml, encoding='utf-8', xml_declaration=True)
 
     logging.info("Done")
 

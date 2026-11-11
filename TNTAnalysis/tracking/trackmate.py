@@ -101,8 +101,15 @@ def track_everything_v2(pathlist, variable_config, output_folder="output_trackin
 
         trackmate = trackmate_class(track_model, track_settings)
 
-        # Check input and process
-        if not trackmate.checkInput() or not trackmate.process():
+        if not (trackmate.checkInput() and trackmate.execDetection()
+                and trackmate.execInitialSpotFiltering() and trackmate.computeSpotFeatures(True)
+                and trackmate.execSpotFiltering(True)):
+            raise RuntimeError(f'TrackMate failed for {image_path}: {trackmate.getErrorMessage()}')
+        # SparseLAP rejects empty spot collections; the feature tables can still be exported.
+        if track_model.getSpots().getNSpots(True) > 0 and not trackmate.execTracking():
+            raise RuntimeError(f'TrackMate failed for {image_path}: {trackmate.getErrorMessage()}')
+        if not (trackmate.computeEdgeFeatures(True) and trackmate.computeTrackFeatures(True)
+                and trackmate.execTrackFiltering(True)):
             raise RuntimeError(f'TrackMate failed for {image_path}: {trackmate.getErrorMessage()}')
         logging.info('TrackMate processing completed successfully!')
 
@@ -137,9 +144,9 @@ def track_everything_v2(pathlist, variable_config, output_folder="output_trackin
 
             feature_model = track_model.getFeatureModel()
 
-            feature_names = feature_model.getTrackFeatures()
-            spot_feature_names = feature_model.getSpotFeatures()
-            edge_feature_names = feature_model.getEdgeFeatures()
+            feature_names = list(feature_model.getTrackFeatures())
+            spot_feature_names = list(feature_model.getSpotFeatures())
+            edge_feature_names = list(feature_model.getEdgeFeatures())
 
             if variable_config["PRINTING"]:
                 logging.info(f"Track features: {feature_names}")
@@ -181,9 +188,13 @@ def track_everything_v2(pathlist, variable_config, output_folder="output_trackin
                     list_spot_ids_str.append(spot.ID())
                     # df_spot_ids = pd.concat([df_spot_ids, pd.DataFrame(dict_spot_features, index=[spot.ID()])])
 
-            df_edge_ids_via_list = pd.DataFrame(list_edge_ids, columns=list(dict_edge_features.keys()), index=list_edge_id_str)
-            df_spot_ids_via_list = pd.DataFrame(list_spot_ids, columns=list(dict_spot_features.keys()), index=list_spot_ids_str)
-            df_track_ids_via_list = pd.DataFrame(list_track_ids, columns=list(dict_tract_features.keys()), index=list_track_ids_str)
+            df_edge_ids_via_list = pd.DataFrame(list_edge_ids, columns=edge_feature_names, index=list_edge_id_str)
+            df_spot_ids_via_list = pd.DataFrame(list_spot_ids,
+                                              columns=['TRACK_ID', *spot_feature_names, 'INDEX_X', 'INDEX_Y'],
+                                              index=list_spot_ids_str)
+            df_track_ids_via_list = pd.DataFrame(list_track_ids, columns=feature_names, index=list_track_ids_str)
+            if df_track_ids_via_list.empty:
+                logging.info('No tracks retained for %s; writing empty result tables.', image_path)
 
             # print(f"The spots are the same? : {df_spot_ids.equals(df_spot_ids_via_list)}")
             # print(f"The edges are the same? : {df_edge_ids.equals(df_edge_ids_via_list)}")
