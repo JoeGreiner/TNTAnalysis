@@ -1,26 +1,65 @@
 import numpy as np
 import pandas as pd
+from xlsxwriter.utility import xl_rowcol_to_cell
 
 
-def write_trackmate_xlsx(df_spot, df_edge, df_track, path_xlsx_out):
-    df_spot = df_spot.reset_index()
-    df_edge = df_edge.reset_index()
-    df_track = df_track.reset_index()
-    writer = pd.ExcelWriter(path_xlsx_out)
-    df_spot.to_excel(writer, sheet_name='spots', index=False, freeze_panes=(1, 1))
-    df_edge.to_excel(writer, sheet_name='edges', index=False, freeze_panes=(1, 1))
-    df_track.to_excel(writer, sheet_name='tracks', index=False, freeze_panes=(1, 1))
-    fix_df_lengths(df_spot, writer, 'spots')
-    fix_df_lengths(df_edge, writer, 'edges')
-    fix_df_lengths(df_track, writer, 'tracks')
-    writer.close()
+def write_trackmate_xlsx(df_spot, df_edge, df_track, path_xlsx_out, color_numeric=True):
+    with pd.ExcelWriter(path_xlsx_out, engine='xlsxwriter') as writer:
+        for sheet_name, df in (('spots', df_spot), ('edges', df_edge), ('tracks', df_track)):
+            index_columns = df.index.nlevels
+            df = df.reset_index()
+            df.to_excel(writer, sheet_name=sheet_name, index=False)
+            format_excel_sheet(df, writer, sheet_name, color_numeric, index_columns)
 
-def fix_df_lengths(df, writer, sheetName):
-    for column in df:
-        column_name_length = 1.4*len(column) # can be bigger because of bold/capital letters
-        column_entry_max_lengths = df[column].astype(str).map(len).max()
-        column_length = max(column_entry_max_lengths, column_name_length)
-        col_idx = df.columns.get_loc(column)
-        if np.isnan(column_length):
-            column_length = 1
-        writer.sheets[sheetName].set_column(col_idx, col_idx, int(column_length))
+
+def is_numeric_column(column):
+    column = column.dropna()
+    column = column[column != '']
+    return pd.to_numeric(column, errors='coerce').notna().all()
+
+
+def format_excel_sheet(df, writer, sheet_name, color_numeric=True, index_columns=1):
+    workbook = writer.book
+    worksheet = writer.sheets[sheet_name]
+    header_format = workbook.add_format({
+        'bold': True,
+        'bg_color': '#000000',
+        'font_color': '#FFFFFF',
+        'border': 1,
+        'align': 'center',
+        'valign': 'vcenter',
+    })
+    for col_num, column in enumerate(df.columns):
+        worksheet.write_string(0, col_num, str(column), header_format)
+    worksheet.autofit()
+    worksheet.freeze_panes(1, index_columns)
+
+    if not color_numeric:
+        return
+    constant_format = workbook.add_format({'bg_color': '#FFFF00'})
+    for col_num, column in enumerate(df.columns):
+        if pd.api.types.is_bool_dtype(df[column]) or not is_numeric_column(df[column]):
+            continue
+        values = pd.to_numeric(df[column], errors='coerce').dropna()
+        values = values[np.isfinite(values)]
+        if values.empty:
+            continue
+        if values.nunique() == 1:
+            worksheet.conditional_format(1, col_num, len(df), col_num, {
+                'type': 'formula',
+                'criteria': f'=ISNUMBER({xl_rowcol_to_cell(1, col_num)})',
+                'format': constant_format,
+            })
+            continue
+        worksheet.conditional_format(1, col_num, len(df), col_num, {
+            'type': '3_color_scale',
+            'min_type': 'num',
+            'min_value': values.min(),
+            'min_color': '#FF0000',
+            'mid_type': 'num',
+            'mid_value': values.median(),
+            'mid_color': '#FFFF00',
+            'max_type': 'num',
+            'max_value': values.max(),
+            'max_color': '#00FF00',
+        })

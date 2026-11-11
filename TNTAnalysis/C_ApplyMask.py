@@ -4,7 +4,7 @@ import os
 import pandas as pd
 
 from TNTAnalysis.fileIO.git import check_if_git_uptodate
-from TNTAnalysis.fileIO.xlsx import fix_df_lengths
+from TNTAnalysis.fileIO.xlsx import format_excel_sheet
 import logging
 
 
@@ -83,17 +83,15 @@ def post_process_tracking_data(path_to_label_mask, path_to_xlsx):
 
     logging.info(
         f"Writing {len(df_falls_within_label_mask)} tracks that fall within the label mask to {outpath_inside}")
-    writer = pd.ExcelWriter(outpath_inside)
-    df_falls_within_label_mask.to_excel(writer, sheet_name='tracks', index=False, freeze_panes=(1, 1))
-    fix_df_lengths(df_falls_within_label_mask, writer, 'tracks')
-    writer.close()
+    with pd.ExcelWriter(outpath_inside, engine='xlsxwriter') as writer:
+        df_falls_within_label_mask.to_excel(writer, sheet_name='tracks', index=False)
+        format_excel_sheet(df_falls_within_label_mask, writer, 'tracks')
 
     logging.info(
         f"Writing {len(df_falls_outside_label_mask)} tracks that fall outside the label mask to {outpath_outside}")
-    writer = pd.ExcelWriter(outpath_outside)
-    df_falls_outside_label_mask.to_excel(writer, sheet_name='tracks', index=False, freeze_panes=(1, 1))
-    fix_df_lengths(df_falls_outside_label_mask, writer, 'tracks')
-    writer.close()
+    with pd.ExcelWriter(outpath_outside, engine='xlsxwriter') as writer:
+        df_falls_outside_label_mask.to_excel(writer, sheet_name='tracks', index=False)
+        format_excel_sheet(df_falls_outside_label_mask, writer, 'tracks')
 
     logging.info("Writing xml files with tracks that fall within and outside the label mask")
     # create two xml files, one for the tracks that fall within the label mask and one for the tracks that fall outside
