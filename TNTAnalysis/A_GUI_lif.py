@@ -278,11 +278,13 @@ class GUI_TNT_Analysis(QWidget):
 
         self.step_size = QDoubleSpinBox()
         self.row_layout_nnunet_options.addWidget(self.step_size)
-        self.step_size.setRange(0.1, 1.0)
+        self.step_size.setRange(0.1, 0.9)
         self.step_size.setSingleStep(0.1)
         self.step_size.setDecimals(1)
         self.step_size.setValue(0.5)
-        self.step_size.setPrefix("Sliding Window Overlap: ")
+        self.step_size.setPrefix("Sliding Window Step Size: ")
+        self.step_size.setToolTip(
+            "Step size as a fraction of the window size: 0.1 means about 90% overlap, 0.5 about 50%.")
         self.step_size.valueChanged.connect(self.saveSettingsStepSize)
 
         # restore default prediction button
