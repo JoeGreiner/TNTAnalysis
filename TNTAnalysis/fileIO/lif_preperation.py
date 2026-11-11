@@ -148,10 +148,8 @@ def load_part_of_lif_file(lif_obj, squeeze=True, swap_axes=True):
         logger.warning('%s: using only the first of %d channels.', lif_obj.name, lif_obj.channels)
     if lif_obj.bit_depth[0] == 8:
         data_type = np.uint8
-    elif lif_obj.bit_depth[0] == 12:
+    elif lif_obj.bit_depth[0] in (12, 16):
         data_type = np.uint16
-    elif lif_obj.bit_depth[0] == 16:
-        data_type = np.uint32
     else:
         data_type = np.float32
         print(f'bit_depth {lif_obj.bit_depth} not implemented')
@@ -314,12 +312,9 @@ def combine_lif_and_matching_prediction(lif_path, prediction_folder, output_fold
         prediction_data = np.clip(prediction_data, 0, 255)
         prediction_data = prediction_data.astype(np.uint8)
 
-    timeseries_shape = lif_data['image_data'].shape
-    combined_data = np.zeros((timeseries_shape[0], 2,  timeseries_shape[1], timeseries_shape[2]),
-                             dtype=np.uint8)
     # swap x y to keep compatibility with imagej/drag and drop lif
-    combined_data[:, 1, :, :] = np.swapaxes(lif_data['image_data'], 1, 2)
-    combined_data[:, 0, :, :] = np.swapaxes(prediction_data, 1, 2)
+    combined_data = np.stack((np.swapaxes(prediction_data, 1, 2),
+                              np.swapaxes(lif_data['image_data'], 1, 2)), axis=1)
     output_path_combined = join(output_folder, os.path.splitext(basename(lif_path))[0] + '_combined.tif')
 
 
