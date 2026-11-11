@@ -247,7 +247,7 @@ def read_series_with_read_lif(path, series_index=0, return_only_image_data=True,
         return lif_data
 
 
-def prepare_single_lif_to_nii(path_to_file, path_to_output_folder, skip_if_file_exists=True):
+def prepare_single_lif_to_nii(path_to_file, path_to_output_folder):
     """
     Load up a lif, file, transpose it to [t, y, x] and write it in the nii.gz format.
 
@@ -258,16 +258,11 @@ def prepare_single_lif_to_nii(path_to_file, path_to_output_folder, skip_if_file_
     name_of_file = basename(path_to_file)
     output_name = os.path.splitext(name_of_file)[0] + 'lif_0000.nii.gz'
     output_path = join(path_to_output_folder, output_name)
-    if skip_if_file_exists:
-        if os.path.exists(output_path):
-            print(f'{output_path} already exists, skipping')
-            return
-
     first_item_v2 = read_series_with_read_lif(path_to_file, series_index=0)
     logger.info(f"Shape before transposing: {first_item_v2.shape}")
     first_item_v2 = np.transpose(first_item_v2, (2, 1, 0))
     logger.info(f"Shape after transposing: {first_item_v2.shape}")
-    itk.imwrite(itk.GetImageFromArray(first_item_v2), join(path_to_output_folder, output_name))
+    itk.imwrite(itk.GetImageFromArray(first_item_v2), output_path)
     logger.info(f"File {output_name} written successfully!")
 
 

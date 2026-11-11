@@ -3,6 +3,7 @@ import logging
 from math import isfinite
 import subprocess
 from os.path import join
+from tempfile import TemporaryDirectory
 from typing import List
 import torch
 from readlif.reader import LifFile
@@ -51,9 +52,6 @@ def run_analysis(list_tifs: list,
         raise ValueError('The frame interval must be a finite positive number of seconds.')
     assert nnu_dataset_number > 0, "The nnU-Net dataset number needs to be a positive number"
 
-    for img_path in list_tifs:
-        prepare_single_lif_to_nii(img_path, path_to_output_folder)
-
     # start nnUNet Inference
     output_folder_predictions = join(path_to_output_folder, "inference_predictions")
     if not os.path.exists(output_folder_predictions):
@@ -67,16 +65,20 @@ def run_analysis(list_tifs: list,
     # set_fiji_path()
     os.environ["fiji_path"] = fiji_path
 
-    command_str = (
-        f'nnUNetv2_predict -i "{path_to_output_folder}" -o "{output_folder_predictions}" -d {nnu_dataset_number} -c 3d_fullres'
-        f" -step_size {overlap} -device {get_prediction_device()}")
-    if disable_tta:
-        command_str += " --disable_tta"
-    if continue_prediction:
-        command_str += " --continue_prediction"
+    with TemporaryDirectory(prefix='nnunet-input-', dir=path_to_output_folder) as input_folder:
+        for img_path in list_tifs:
+            prepare_single_lif_to_nii(img_path, input_folder)
 
-    logging.info(f"Running command: {command_str}")
-    subprocess.run(command_str, shell=True, check=True)
+        command_str = (
+            f'nnUNetv2_predict -i "{input_folder}" -o "{output_folder_predictions}" -d {nnu_dataset_number} -c 3d_fullres'
+            f" -step_size {overlap} -device {get_prediction_device()}")
+        if disable_tta:
+            command_str += " --disable_tta"
+        if continue_prediction:
+            command_str += " --continue_prediction"
+
+        logging.info(f"Running command: {command_str}")
+        subprocess.run(command_str, shell=True, check=True)
 
     # combined the nii.gz prediction with the lif file into a single tif with correct header
     # so that the .xml can be easily visualised in trackmate, AND has already all the correct metadata
