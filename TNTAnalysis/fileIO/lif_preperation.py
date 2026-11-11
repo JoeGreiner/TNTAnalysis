@@ -15,6 +15,12 @@ logging.basicConfig(level=logging.DEBUG,
 logger = logging.getLogger(__name__)
 
 
+class FrameTimingError(ValueError):
+    def __init__(self, message, timing):
+        super().__init__(message)
+        self.timing = dict(timing, frame_interval_s=None, frame_interval_source=None)
+
+
 def get_frame_timing(lif_file, series_index=0, channel_index=0):
     """Read timing for a 2D time series without loading pixels; all returned times are in seconds."""
     def iter_images(element):
@@ -58,7 +64,7 @@ def get_frame_timing(lif_file, series_index=0, channel_index=0):
 
     timestamp_lists = image.findall('./TimeStampList')
     if len(timestamp_lists) > 1:
-        raise ValueError(f'{series_name}: multiple timestamp lists are ambiguous.')
+        raise FrameTimingError(f'{series_name}: multiple timestamp lists are ambiguous.', timing)
     ticks = []
     if timestamp_lists:
         timestamps = timestamp_lists[0]
@@ -77,11 +83,12 @@ def get_frame_timing(lif_file, series_index=0, channel_index=0):
             if np.any(ticks < 0):
                 raise ValueError('Negative timestamp')
         except (KeyError, ValueError, OverflowError) as error:
-            raise ValueError(f'{series_name}: invalid LIF timestamps ({error}).') from error
+            raise FrameTimingError(f'{series_name}: invalid LIF timestamps ({error}).', timing) from error
 
     if len(ticks) == 0:
         if timing['sequence_cycle_time_s'] is None:
-            raise ValueError(f'{series_name}: no timestamps or unambiguous positive sequence-master CycleTime available.')
+            raise FrameTimingError(
+                f'{series_name}: no timestamps or unambiguous positive sequence-master CycleTime available.', timing)
         timing['frame_interval_s'] = timing['sequence_cycle_time_s']
         timing['frame_interval_source'] = 'sequence_master'
         logger.warning('%s: no timestamps; using sequence-master CycleTime %.6f s. Delta-T extrema are unknown.',
@@ -95,9 +102,9 @@ def get_frame_timing(lif_file, series_index=0, channel_index=0):
             offsets = [int(channel.attrib['BytesInc']) for channel in channels]
             time_stride = int(time_axis.attrib['BytesInc'])
         except (KeyError, ValueError) as error:
-            raise ValueError(f'{series_name}: cannot determine timestamp order from BytesInc.') from error
+            raise FrameTimingError(f'{series_name}: cannot determine timestamp order from BytesInc.', timing) from error
         if min(offsets) != 0 or len(set(offsets)) != len(offsets) or time_stride <= 0:
-            raise ValueError(f'{series_name}: ambiguous channel/time ordering.')
+            raise FrameTimingError(f'{series_name}: ambiguous channel/time ordering.', timing)
         channel_position = sorted(offsets).index(offsets[channel_index])
         # LIF plane order follows byte offsets; channels may be stored before or after time.
         if time_stride > max(offsets):
@@ -105,15 +112,15 @@ def get_frame_timing(lif_file, series_index=0, channel_index=0):
         elif time_stride * frame_count <= sorted(offsets)[1]:
             frame_ticks = ticks.reshape(len(channels), frame_count)[channel_position]
         else:
-            raise ValueError(f'{series_name}: unsupported channel/time ordering.')
+            raise FrameTimingError(f'{series_name}: unsupported channel/time ordering.', timing)
     else:
-        raise ValueError(f'{series_name}: {len(ticks)} timestamps cannot be assigned to '
-                         f'{frame_count} time points and {len(channels)} channels.')
+        raise FrameTimingError(f'{series_name}: {len(ticks)} timestamps cannot be assigned to '
+                               f'{frame_count} time points and {len(channels)} channels.', timing)
 
     # Subtract integer 100 ns ticks before converting to seconds to preserve precision.
     delta_t_s = np.diff(frame_ticks) / 10_000_000
     if np.any(delta_t_s <= 0):
-        raise ValueError(f'{series_name}: timestamps must increase strictly within the selected channel.')
+        raise FrameTimingError(f'{series_name}: timestamps must increase strictly within the selected channel.', timing)
     timing.update(frame_interval_s=float(delta_t_s.mean()), frame_interval_source='timestamps',
                   delta_t_min_s=float(delta_t_s.min()), delta_t_max_s=float(delta_t_s.max()))
     logger.info('%s: timestamp interval mean %.6f s, min %.6f s, max %.6f s (channel %d).',
@@ -124,8 +131,8 @@ def get_frame_timing(lif_file, series_index=0, channel_index=0):
 def apply_frame_duration_override(timing, frame_duration=None):
     """Keep the automatic timing for comparison when an absolute interval is supplied."""
     timing = dict(timing)
-    timing['automatic_frame_interval_s'] = timing['frame_interval_s']
-    timing['automatic_frame_interval_source'] = timing['frame_interval_source']
+    timing['automatic_frame_interval_s'] = timing.get('frame_interval_s')
+    timing['automatic_frame_interval_source'] = timing.get('frame_interval_source')
     if frame_duration is not None:
         if not np.isfinite(frame_duration) or frame_duration <= 0:
             raise ValueError('The frame interval must be a finite positive number of seconds.')
@@ -235,12 +242,21 @@ def load_part_of_lif_file(lif_obj, squeeze=True, swap_axes=True):
             'all_settings': all_settings}
 
 
-def read_series_with_read_lif(path, series_index=0, return_only_image_data=True, include_frame_timing=False):
+def read_series_with_read_lif(path, series_index=0, return_only_image_data=True, include_frame_timing=False,
+                              frame_duration=None):
     opened_lif_file = LifFile(path)
     number_images_in_lif = len(opened_lif_file.image_list)
 
     assert series_index < number_images_in_lif, "requested series is larger than series present in lif file"
-    frame_timing = get_frame_timing(opened_lif_file, series_index) if include_frame_timing else None
+    if include_frame_timing:
+        try:
+            frame_timing = get_frame_timing(opened_lif_file, series_index)
+        except FrameTimingError as error:
+            if frame_duration is None:
+                raise
+            logger.warning('Using manual frame interval: %s', error)
+            frame_timing = error.timing
+        frame_timing = apply_frame_duration_override(frame_timing, frame_duration)
     lif_data = load_part_of_lif_file(lif_obj=opened_lif_file.get_image(series_index))
 
     if return_only_image_data:
@@ -273,13 +289,14 @@ def prepare_single_lif_to_nii(path_to_file, path_to_output_folder):
 
 def combine_lif_and_matching_prediction(lif_path, prediction_folder, output_folder, frame_duration=None):
     logging.info(f"Loading the lif file {lif_path}")
-    lif_data = read_series_with_read_lif(lif_path, series_index=0, return_only_image_data=False, include_frame_timing=True)
+    lif_data = read_series_with_read_lif(lif_path, series_index=0, return_only_image_data=False,
+                                       include_frame_timing=True, frame_duration=frame_duration)
     logger.info(f"Shape before transposing: {lif_data['image_data'].shape}")
     lif_data['image_data'] = np.transpose(lif_data['image_data'], (2, 1, 0))
     logger.info(f"Shape after transposing: {lif_data['image_data'].shape}")
 
     scale_x_in_m, scale_y_in_m = [lif_data[key] for key in ['scaleX_in_M', 'scaleY_in_M']]
-    frame_timing = apply_frame_duration_override(lif_data['frame_timing'], frame_duration)
+    frame_timing = lif_data['frame_timing']
     frame_interval_s = frame_timing['frame_interval_s']
     scale_x_in_m = round(scale_x_in_m * 1000000, 3)
     scale_y_in_m = round(scale_y_in_m * 1000000, 3)

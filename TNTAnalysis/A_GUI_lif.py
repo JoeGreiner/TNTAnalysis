@@ -17,7 +17,7 @@ from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLineEdit, QPushButton, QFileD
 from TNTAnalysis.fileIO.download_files import download_fiji, download_model, download_testfiles
 from TNTAnalysis.fileIO.git import check_if_git_uptodate
 from TNTAnalysis.fileIO.lif_preperation import (prepare_single_lif_to_nii, combine_lif_and_matching_prediction,
-                                              get_frame_timing, apply_frame_duration_override)
+                                              get_frame_timing, apply_frame_duration_override, FrameTimingError)
 import os
 
 from TNTAnalysis.tracking.trackmate import track_everything_v2
@@ -574,10 +574,12 @@ class GUI_TNT_Analysis(QWidget):
 
 
     def startAnalysis(self):
+        override = self.override_frame_duration.isChecked()
         if (self.is_analysis_running or not self.files_to_analyse or self.duplicate_file_names
-                or any(error for timing, error in self.frame_timings)):
+                or any(error and not (override and isinstance(error, FrameTimingError))
+                       for timing, error in self.frame_timings)):
             return
-        frame_duration = self.frame_duration.value() if self.override_frame_duration.isChecked() else None
+        frame_duration = self.frame_duration.value() if override else None
         try:
             self.analysisThread = AnalysisThread(path_imgs_to_analyse=self.files_to_analyse,
                                                  path_to_nnunet_model=self.nnunet_folder.text(),
@@ -675,9 +677,13 @@ class GUI_TNT_Analysis(QWidget):
                 timing.update(channel_count=series['channels'], timestep_count=series['dims'].t)
                 timing.update(get_frame_timing(lif_file))
                 self.frame_timings.append((timing, None))
+            except FrameTimingError as error:
+                logging.warning('Could not read frame timing for %s: %s', path, error)
+                timing.update(error.timing)
+                self.frame_timings.append((timing, error))
             except Exception as error:
                 logging.exception('Could not read frame timing for %s', path)
-                self.frame_timings.append((timing, str(error)))
+                self.frame_timings.append((timing, error))
         if self.frame_timings and not self.frame_timings[0][1]:
             self.frame_duration.setValue(self.frame_timings[0][0]['frame_interval_s'])
         self.updateFrameTimingPreview()
@@ -711,17 +717,21 @@ class GUI_TNT_Analysis(QWidget):
         frame_duration = self.frame_duration.value() if override else None
         self.frameTimingTable.setRowCount(len(self.files_to_analyse))
         errors = 0
+        timing_errors = 0
         multichannel_files = 0
         for row, (path, (timing, error)) in enumerate(zip(self.files_to_analyse, self.frame_timings)):
             duplicate_name = os.path.splitext(os.path.basename(path))[0].casefold() in self.duplicate_file_names
             values = [os.path.basename(path), timing['channel_count'], timing['timestep_count']]
             multichannel_files += (timing['channel_count'] or 0) > 1
-            if error:
-                values += [None, None, None, None, None, 'Timing unavailable', None]
+            if isinstance(error, FrameTimingError):
+                timing_errors += 1
+            if error and not isinstance(error, FrameTimingError):
+                values += [None, None, None, None, None, 'Unavailable', None]
                 errors += 1
             else:
                 effective_timing = apply_frame_duration_override(timing, frame_duration)
-                source = 'Timestamps' if timing['frame_interval_source'] == 'timestamps' else 'Sequence master'
+                source = {'timestamps': 'Timestamps', 'sequence_master': 'Sequence master'}.get(
+                    timing['frame_interval_source'], 'Timing unavailable')
                 values += [timing['frame_interval_s'], timing['delta_t_min_s'], timing['delta_t_max_s'],
                            timing['cycle_time_s'], timing['sequence_cycle_time_s'],
                            source, effective_timing['frame_interval_s']]
@@ -740,13 +750,17 @@ class GUI_TNT_Analysis(QWidget):
             warning_color = '#f6c344' if self.palette().color(QPalette.Window).lightness() < 128 else '#8a4f00'
             status += (f' — <span style="color: {warning_color};">'
                        f'First channel only for {multichannel_files} multichannel file(s).</span>')
+        if timing_errors:
+            status += (f' — timing unavailable for {timing_errors} file(s); '
+                       + ('using manual interval.' if override else 'set a manual interval to continue.'))
         if errors:
-            status += f' — timing unavailable for {errors} file(s); see row tooltips.'
+            status += f' — cannot read {errors} file(s); see row tooltips.'
         if self.duplicate_file_names:
             status += ' — duplicate filenames; use unique names before starting.'
         self.fileCountLabel.setText(status)
         self.fileCountLabel.setWordWrap(True)
-        self.startAnalysisButton.setEnabled(bool(self.files_to_analyse) and errors == 0 and not self.duplicate_file_names)
+        self.startAnalysisButton.setEnabled(bool(self.files_to_analyse) and errors == 0
+                                            and (timing_errors == 0 or override) and not self.duplicate_file_names)
 
     def dragEnterEvent(self, e):
         if not self.is_analysis_running and any(
