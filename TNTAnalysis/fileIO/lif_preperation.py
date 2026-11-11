@@ -135,6 +135,10 @@ def apply_frame_duration_override(timing, frame_duration=None):
 
 
 def load_part_of_lif_file(lif_obj, squeeze=True, swap_axes=True):
+    if lif_obj.dims.m > 1:
+        raise ValueError(f'{lif_obj.name}: mosaic images are not supported.')
+    if lif_obj.channels > 1:
+        logger.warning('%s: using only the first of %d channels.', lif_obj.name, lif_obj.channels)
     if lif_obj.bit_depth[0] == 8:
         data_type = np.uint8
     elif lif_obj.bit_depth[0] == 12:
@@ -145,12 +149,12 @@ def load_part_of_lif_file(lif_obj, squeeze=True, swap_axes=True):
         data_type = np.float32
         print(f'bit_depth {lif_obj.bit_depth} not implemented')
         # return
-    dim_x, dim_y, dim_z, dim_t, dim_c = [lif_obj.dims[i] for i in range(len(lif_obj.dims))]
+    dim_x, dim_y, dim_z, dim_t = lif_obj.dims[:4]
+    dim_c = 1
     img = np.zeros(shape=(dim_x, dim_y, dim_z, dim_t, dim_c), dtype=data_type)
     for z in range(dim_z):
         for t in range(dim_t):
-            for c in range(dim_c):
-                img[:, :, z, t, c] = np.array(lif_obj.get_frame(z=z, t=t, c=c)).T
+            img[:, :, z, t, 0] = np.array(lif_obj.get_frame(z=z, t=t, c=0)).T
 
     is_timeseries = False
     if dim_t > 1:

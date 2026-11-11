@@ -9,7 +9,7 @@ import torch
 from readlif.reader import LifFile
 
 from PyQt5.QtCore import QThread, Qt, QSettings, QUrl, pyqtSignal
-from PyQt5.QtGui import QDesktopServices, QFont
+from PyQt5.QtGui import QDesktopServices, QFont, QPalette
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLineEdit, QPushButton, QFileDialog, QApplication, QLabel, \
     QHBoxLayout, QCheckBox, QDoubleSpinBox, QMessageBox, QProgressDialog, QTableWidget, QTableWidgetItem, \
     QAbstractItemView, QHeaderView
@@ -711,9 +711,11 @@ class GUI_TNT_Analysis(QWidget):
         frame_duration = self.frame_duration.value() if override else None
         self.frameTimingTable.setRowCount(len(self.files_to_analyse))
         errors = 0
+        multichannel_files = 0
         for row, (path, (timing, error)) in enumerate(zip(self.files_to_analyse, self.frame_timings)):
             duplicate_name = os.path.splitext(os.path.basename(path))[0].casefold() in self.duplicate_file_names
             values = [os.path.basename(path), timing['channel_count'], timing['timestep_count']]
+            multichannel_files += (timing['channel_count'] or 0) > 1
             if error:
                 values += [None, None, None, None, None, 'Timing unavailable', None]
                 errors += 1
@@ -733,10 +735,16 @@ class GUI_TNT_Analysis(QWidget):
                 if column not in (0, 8):
                     item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
                 self.frameTimingTable.setItem(row, column, item)
-        self.fileCountLabel.setText(f'Number of files found: {len(self.files_to_analyse)}' +
-                                   (f' — timing unavailable for {errors} file(s); see row tooltips.' if errors else '') +
-                                   (' — duplicate filenames; use unique names before starting.'
-                                    if self.duplicate_file_names else ''))
+        status = f'Number of files found: {len(self.files_to_analyse)}'
+        if multichannel_files:
+            warning_color = '#f6c344' if self.palette().color(QPalette.Window).lightness() < 128 else '#8a4f00'
+            status += (f' — <span style="color: {warning_color};">'
+                       f'First channel only for {multichannel_files} multichannel file(s).</span>')
+        if errors:
+            status += f' — timing unavailable for {errors} file(s); see row tooltips.'
+        if self.duplicate_file_names:
+            status += ' — duplicate filenames; use unique names before starting.'
+        self.fileCountLabel.setText(status)
         self.fileCountLabel.setWordWrap(True)
         self.startAnalysisButton.setEnabled(bool(self.files_to_analyse) and errors == 0 and not self.duplicate_file_names)
 
