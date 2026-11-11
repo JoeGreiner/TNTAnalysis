@@ -256,7 +256,7 @@ def prepare_single_lif_to_nii(path_to_file, path_to_output_folder, skip_if_file_
     :return:
     """
     name_of_file = basename(path_to_file)
-    output_name = name_of_file.replace(".lif", "lif_0000.nii.gz")
+    output_name = os.path.splitext(name_of_file)[0] + 'lif_0000.nii.gz'
     output_path = join(path_to_output_folder, output_name)
     if skip_if_file_exists:
         if os.path.exists(output_path):
@@ -287,7 +287,7 @@ def combine_lif_and_matching_prediction(lif_path, prediction_folder, output_fold
     assert scale_x_in_m == scale_y_in_m, f"The scales are different {scale_x_in_m} != {scale_y_in_m}"
     logging.info(f"Scale in x and y is {scale_x_in_m} um, frame interval is {frame_interval_s} s")
 
-    image_path_no_ext = lif_path.replace(".lif", "")
+    image_path_no_ext = os.path.splitext(lif_path)[0]
     expected_prediction_path = join(prediction_folder, basename(image_path_no_ext) + "lif.nii.gz")
     assert exists(expected_prediction_path), f"Expected prediction file {expected_prediction_path} does not exist"
     prediction_data = itk.GetArrayFromImage(itk.imread(expected_prediction_path))
@@ -304,7 +304,7 @@ def combine_lif_and_matching_prediction(lif_path, prediction_folder, output_fold
     # swap x y to keep compatibility with imagej/drag and drop lif
     combined_data[:, 1, :, :] = np.swapaxes(lif_data['image_data'], 1, 2)
     combined_data[:, 0, :, :] = np.swapaxes(prediction_data, 1, 2)
-    output_path_combined = join(output_folder, basename(lif_path).replace(".lif", "_combined.tif"))
+    output_path_combined = join(output_folder, os.path.splitext(basename(lif_path))[0] + '_combined.tif')
 
 
     if not exists(output_folder):

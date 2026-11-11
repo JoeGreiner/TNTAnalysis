@@ -1,4 +1,4 @@
-import glob
+from collections import Counter
 import logging
 from math import isfinite
 import subprocess
@@ -107,29 +107,23 @@ def run_analysis(list_tifs: list,
     # visualize_multiple_images_napari(output_folder_tracking, output_folder_dataset)
 
 
-def load_files_recursively(path_to_base_folder: str, level: int = 4) -> List[str]:
-    """
-    This function loads all the tif files from the specified directories up to a certain depth level.
-
-    Parameters:
-    path_to_base_folder (str): The base directory where the image files are located.
-    level (int): The depth of the subdirectories from which to load the image files. Default is 4.
-
-    Returns:
-    list[str]: A list of filepaths for each tif file in the specified directories.
-    """
+def load_files_recursively(path_to_base_folder: str, level: int = None) -> List[str]:
+    """Find LIF files in a file or folder, including all subfolders unless a depth limit is given."""
     logging.info(f'Loading files from {path_to_base_folder}')
-
-    if not os.path.isdir(path_to_base_folder):
-        if path_to_base_folder.endswith('.lif'):
-            files = [path_to_base_folder]
-        else:
-            files = []
-    else:
-        files = []
-        for i in range(level):
-            files += glob.glob(os.path.join(path_to_base_folder, '*/' * i + '*.lif'), recursive=True)
-        logging.info(f'Loaded {len(files)} files')
+    path_to_base_folder = os.path.abspath(path_to_base_folder)
+    if os.path.isfile(path_to_base_folder):
+        return [path_to_base_folder] if path_to_base_folder.lower().endswith('.lif') else []
+    files = []
+    for directory, subdirectories, names in os.walk(path_to_base_folder):
+        subdirectories.sort()
+        relative_path = os.path.relpath(directory, path_to_base_folder)
+        depth = 0 if relative_path == '.' else len(relative_path.split(os.sep))
+        if level is not None and depth >= level:
+            subdirectories[:] = []
+            continue
+        files.extend(join(directory, name) for name in sorted(names)
+                     if name.lower().endswith('.lif') and os.path.isfile(join(directory, name)))
+    logging.info(f'Loaded {len(files)} files')
     return files
 
 
@@ -365,8 +359,8 @@ class GUI_TNT_Analysis(QWidget):
         self.download_and_link_fiji_button.clicked.connect(self.download_and_link_fiji)
         self.row_layout_fiji.addWidget(self.download_and_link_fiji_button)
 
-        ## Drop Folder for TIFs Selection
-        self.dropLabel = QLabel("Drop folder with Lifs here", self)
+        ## Input files and folders
+        self.dropLabel = QLabel("Drop LIF files or folders here", self)
         self.dropLabel.setAlignment(Qt.AlignCenter)
         font = QFont("Arial", 20, QFont.Bold)
         self.dropLabel.setFont(font)
@@ -421,10 +415,15 @@ class GUI_TNT_Analysis(QWidget):
                                 self.fileCountLabel, self.frameTimingPanel]
 
         self.setAcceptDrops(True)
+        for field in self.findChildren(QLineEdit):
+            field.setAcceptDrops(False)
+        self.frameTimingTable.setAcceptDrops(False)
+        self.frameTimingTable.viewport().setAcceptDrops(False)
         self.is_analysis_running = False
 
         self.files_to_analyse = []
         self.frame_timings = []
+        self.duplicate_file_names = set()
 
     def printSettings(self):
         logging.info(f"Settings:")
@@ -556,7 +555,8 @@ class GUI_TNT_Analysis(QWidget):
 
 
     def startAnalysis(self):
-        if not self.files_to_analyse or any(error for timing, error in self.frame_timings):
+        if (not self.files_to_analyse or self.duplicate_file_names
+                or any(error for timing, error in self.frame_timings)):
             return
         frame_duration = self.frame_duration.value() if self.override_frame_duration.isChecked() else None
         # Set the analysis state to True
@@ -613,6 +613,7 @@ class GUI_TNT_Analysis(QWidget):
         # reset widgets
         self.files_to_analyse = []
         self.frame_timings = []
+        self.duplicate_file_names = set()
         self.override_frame_duration.setChecked(False)
         self.frameTimingTable.setRowCount(0)
         self.frameTimingPanel.hide()
@@ -623,14 +624,23 @@ class GUI_TNT_Analysis(QWidget):
         self.startAnalysisButton.hide()
         self.dropLabel.show()
 
-    def loadFiles(self, directory_path, namefilter=''):
+    def loadFiles(self, paths, namefilter=''):
         if self.is_analysis_running:
             return
-        logging.info(f'Loading files from {directory_path}')
-        files = load_files_recursively(directory_path)
+        if isinstance(paths, (str, os.PathLike)):
+            paths = [paths]
+        files = []
+        seen = set()
+        for path in paths:
+            for file_path in load_files_recursively(path):
+                identity = os.path.normcase(os.path.realpath(file_path))
+                if identity not in seen and namefilter in file_path:
+                    seen.add(identity)
+                    files.append(file_path)
 
-        if len(namefilter) > 0:
-            files = [f for f in files if namefilter in f]
+        name_counts = Counter(os.path.splitext(os.path.basename(path))[0].casefold() for path in files)
+        self.duplicate_file_names = {name for name, count in name_counts.items() if count > 1}
+        self.pathLineEdit.setText('; '.join(os.fspath(path) for path in paths))
 
         self.files_to_analyse = files
         self.frame_timings = []
@@ -657,6 +667,7 @@ class GUI_TNT_Analysis(QWidget):
                 self.layout().addWidget(self.frameTimingPanel)
             self.fileCountLabel.show()
             self.frameTimingPanel.show()
+            self.dropLabel.hide()
             if not self.widgetIsAdded(self.startAnalysisButton):
                 self.layout().addWidget(self.startAnalysisButton)
             if not self.widgetIsAdded(self.pathLineEdit):
@@ -670,6 +681,7 @@ class GUI_TNT_Analysis(QWidget):
             if not self.widgetIsAdded(self.fileCountLabel):
                 self.layout().addWidget(self.fileCountLabel)
             self.fileCountLabel.show()
+            self.dropLabel.show()
 
     def updateFrameTimingPreview(self):
         override = self.override_frame_duration.isChecked()
@@ -678,6 +690,7 @@ class GUI_TNT_Analysis(QWidget):
         self.frameTimingTable.setRowCount(len(self.files_to_analyse))
         errors = 0
         for row, (path, (timing, error)) in enumerate(zip(self.files_to_analyse, self.frame_timings)):
+            duplicate_name = os.path.splitext(os.path.basename(path))[0].casefold() in self.duplicate_file_names
             values = [os.path.basename(path), timing['channel_count'], timing['timestep_count']]
             if error:
                 values += [None, None, None, None, None, 'Timing unavailable', None]
@@ -691,34 +704,43 @@ class GUI_TNT_Analysis(QWidget):
             for column, value in enumerate(values):
                 text = '—' if value is None else (f'{value:.6f}' if isinstance(value, float) else str(value))
                 item = QTableWidgetItem(text)
-                item.setToolTip(f'{path}\n{error}' if error else f'{path}\n{text}')
+                tooltip = f'{path}\n{error}' if error else f'{path}\n{text}'
+                if duplicate_name:
+                    tooltip += '\nAnother input file has the same name. Use unique filenames to avoid overwriting results.'
+                item.setToolTip(tooltip)
                 if column not in (0, 8):
                     item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
                 self.frameTimingTable.setItem(row, column, item)
         self.fileCountLabel.setText(f'Number of files found: {len(self.files_to_analyse)}' +
-                                   (f' — timing unavailable for {errors} file(s); see row tooltips.' if errors else ''))
-        self.startAnalysisButton.setEnabled(bool(self.files_to_analyse) and errors == 0)
+                                   (f' — timing unavailable for {errors} file(s); see row tooltips.' if errors else '') +
+                                   (' — duplicate filenames; use unique names before starting.'
+                                    if self.duplicate_file_names else ''))
+        self.fileCountLabel.setWordWrap(True)
+        self.startAnalysisButton.setEnabled(bool(self.files_to_analyse) and errors == 0 and not self.duplicate_file_names)
 
     def dragEnterEvent(self, e):
-        if e.mimeData().hasUrls():
-            e.accept()
-            self.dropLabel.setText("Drop Folder Here")
+        if not self.is_analysis_running and any(
+                url.isLocalFile() and (os.path.isdir(url.toLocalFile()) or
+                                      (os.path.isfile(url.toLocalFile()) and url.toLocalFile().lower().endswith('.lif')))
+                for url in e.mimeData().urls()):
+            e.acceptProposedAction()
+            self.dropLabel.setText("Drop LIF files or folders here")
             self.dropLabel.setStyleSheet("background-color: #bce0ce; border: 2px dashed #888888; color: #10c46a;")
         else:
             e.ignore()
 
     def dragLeaveEvent(self, e):
-        self.dropLabel.setText("Drop Folder Here")
+        self.dropLabel.setText("Drop LIF files or folders here")
         self.dropLabel.setStyleSheet("background-color: #f0f0f0; border: 2px dashed #888888; color: #888888;")
 
     def dropEvent(self, e):
-        for url in e.mimeData().urls():
-            if url.isLocalFile():
-                path = str(url.toLocalFile())
-                self.pathLineEdit.setText(path)
-                self.loadFiles(path)
-                self.dropLabel.setStyleSheet("background-color: #f0f0f0; border: 2px dashed #888888; color: #888888;")
-                self.dropLabel.hide()
+        paths = [url.toLocalFile() for url in e.mimeData().urls() if url.isLocalFile()]
+        if self.is_analysis_running or not paths:
+            e.ignore()
+            return
+        self.loadFiles(paths)
+        self.dropLabel.setStyleSheet("background-color: #f0f0f0; border: 2px dashed #888888; color: #888888;")
+        e.acceptProposedAction()
 
 
 def run_GUI():
