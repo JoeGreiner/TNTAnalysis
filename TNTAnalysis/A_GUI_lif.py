@@ -76,7 +76,7 @@ def run_analysis(list_tifs: list,
         command_str += " --continue_prediction"
 
     logging.info(f"Running command: {command_str}")
-    subprocess.run(command_str, shell=True)
+    subprocess.run(command_str, shell=True, check=True)
 
     # combined the nii.gz prediction with the lif file into a single tif with correct header
     # so that the .xml can be easily visualised in trackmate, AND has already all the correct metadata
@@ -228,23 +228,28 @@ class AnalysisThread(QThread):
         self.overlap = overlap
         self.continue_prediction = continue_prediction
         self.disable_tta = disable_tta
+        self.error = None
 
     def run(self):
         logging.info('Starting analysis')
-
-        run_analysis(list_tifs=self.path_imgs_to_analyse,
-                     path_to_nnunet_model=self.path_to_nnunet_model,
-                     path_to_output_folder=self.path_to_output_folder,
-                     fiji_path=self.fiji_path,
-                     frame_duration=self.frame_duration,
-                     overlap=self.overlap,
-                     continue_prediction=self.continue_prediction,
-                     disable_tta=self.disable_tta,
-                     multiprocessing=self.multiprocessing,
-                     nnu_dataset_number=self.nnunet_dataset_number,
-                     number_processes=self.number_processes)
-
-        logging.info('Analysis finished')
+        self.error = None
+        try:
+            run_analysis(list_tifs=self.path_imgs_to_analyse,
+                         path_to_nnunet_model=self.path_to_nnunet_model,
+                         path_to_output_folder=self.path_to_output_folder,
+                         fiji_path=self.fiji_path,
+                         frame_duration=self.frame_duration,
+                         overlap=self.overlap,
+                         continue_prediction=self.continue_prediction,
+                         disable_tta=self.disable_tta,
+                         multiprocessing=self.multiprocessing,
+                         nnu_dataset_number=self.nnunet_dataset_number,
+                         number_processes=self.number_processes)
+        except Exception as error:
+            self.error = f'{type(error).__name__}: {error}'
+            logging.exception('Analysis failed')
+        else:
+            logging.info('Analysis finished')
 
 
 class GUI_TNT_Analysis(QWidget):
@@ -439,16 +444,8 @@ class GUI_TNT_Analysis(QWidget):
         self.fiji_folder.setText(fiji_path)
         nnu_dataset = self.settings.value("nnuDatasetNumber", "")
         self.nnudataset.setText(nnu_dataset)
-        disable_tta = self.settings.value("disableTTA", "")
-        if disable_tta == 'true':
-            self.disable_tta.setChecked(True)
-        elif disable_tta == 'false':
-            self.disable_tta.setChecked(False)
-        continue_prediction = self.settings.value("continuePrediction", "")
-        if continue_prediction == 'true':
-            self.continue_prediction.setChecked(True)
-        elif continue_prediction == 'false':
-            self.continue_prediction.setChecked(False)
+        self.disable_tta.setChecked(self.settings.value("disableTTA", False, type=bool))
+        self.continue_prediction.setChecked(self.settings.value("continuePrediction", False, type=bool))
         step_size = self.settings.value("stepSize", "")
         if step_size == '':
             step_size = 0.5
@@ -555,51 +552,53 @@ class GUI_TNT_Analysis(QWidget):
 
 
     def startAnalysis(self):
-        if (not self.files_to_analyse or self.duplicate_file_names
+        if (self.is_analysis_running or not self.files_to_analyse or self.duplicate_file_names
                 or any(error for timing, error in self.frame_timings)):
             return
         frame_duration = self.frame_duration.value() if self.override_frame_duration.isChecked() else None
-        # Set the analysis state to True
-        self.is_analysis_running = True
+        try:
+            self.analysisThread = AnalysisThread(path_imgs_to_analyse=self.files_to_analyse,
+                                                 path_to_nnunet_model=self.nnunet_folder.text(),
+                                                 nnunet_dataset_number=self.nnudataset.text(),
+                                                 path_to_output_folder=self.output_folder.text(),
+                                                 fiji_path=self.fiji_folder.text(),
+                                                 overlap=self.step_size.value(),
+                                                 continue_prediction=self.continue_prediction.isChecked(),
+                                                 disable_tta=self.disable_tta.isChecked(),
+                                                 frame_duration=frame_duration,
+                                                 multiprocessing=True)
+        except Exception as error:
+            logging.exception('Could not start analysis')
+            QMessageBox.critical(self, 'Cannot start analysis', f'{type(error).__name__}: {error}')
+            return
 
-        # Change the background color to yellow
-        self.setStyleSheet("background-color: #bce0ce;")
-
-
-        self.hideWidgets()  # Hide all visible widgets
-        self.showProgressBar()  # Show progress bar and label
-        self.analysisThread = AnalysisThread(path_imgs_to_analyse=self.files_to_analyse,
-                                             path_to_nnunet_model=self.nnunet_folder.text(),
-                                             nnunet_dataset_number=self.nnudataset.text(),
-                                             path_to_output_folder=self.output_folder.text(),
-                                             fiji_path=self.fiji_folder.text(),
-                                             overlap=self.step_size.value(),
-                                             continue_prediction=self.continue_prediction.isChecked(),
-                                             disable_tta=self.disable_tta.isChecked(),
-                                             frame_duration=frame_duration,
-                                             multiprocessing=True)  # TODO do multiprocessing gui
-        self.analysisThread.finished.connect(self.hideProgressBar)
         self.analysisThread.finished.connect(self.analysisFinished)
-        self.analysisThread.finished.connect(self.resetApplication)  # Show all hidden widgets when analysis is finished
+        self.is_analysis_running = True
+        self.hideWidgets()
+        self.showProgressBar()
         self.analysisThread.start()
 
-
-
-
     def analysisFinished(self):
-        logging.info('Analysis finished')
-        # Reset the analysis state to False
         self.is_analysis_running = False
+        self.hideProgressBar()
+        if self.analysisThread.error is not None:
+            for widget in self.widgets_to_hide:
+                widget.show()
+            self.pathLineEdit.hide()
+            self.updateFrameTimingPreview()
+            QMessageBox.critical(self, 'Analysis failed', self.analysisThread.error)
+            return
 
-        # Remove the background color style sheet
-        self.setStyleSheet("")
+        self.resetApplication()
+        QMessageBox.information(self, 'TNT Analysis finished',
+                                'TNT Analysis finished. Please proofread the generated .xml file using Trackmate/Fiji.')
 
-        # message box that it should be analysed using trackmate
-        msg = QMessageBox()
-        msg.setWindowTitle("TNT Analysis finished")
-        msg.setText("TNT Analysis finished. Please proofread the generated .xml file using Trackmate/Fiji.")
-        msg.exec()
-
+    def closeEvent(self, event):
+        if self.is_analysis_running:
+            QMessageBox.information(self, 'Analysis running', 'Wait for the analysis to finish before closing.')
+            event.ignore()
+        else:
+            super().closeEvent(event)
 
     def hideWidgets(self):
         logging.info('Hiding widgets')

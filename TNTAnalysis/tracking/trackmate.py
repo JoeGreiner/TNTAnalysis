@@ -102,11 +102,8 @@ def track_everything_v2(pathlist, variable_config, output_folder="output_trackin
         trackmate = trackmate_class(track_model, track_settings)
 
         # Check input and process
-        if trackmate.checkInput():
-            if not trackmate.process():
-                logging.error(str(trackmate.getErrorMessage()))
-        else:
-            logging.error(str(trackmate.getErrorMessage()))
+        if not trackmate.checkInput() or not trackmate.process():
+            raise RuntimeError(f'TrackMate failed for {image_path}: {trackmate.getErrorMessage()}')
         logging.info('TrackMate processing completed successfully!')
 
         if variable_config["SAVE_XML"]:
