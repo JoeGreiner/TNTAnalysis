@@ -5,13 +5,15 @@ import zipfile
 import platform
 
 
-def download(link, outpath, overwrite=False):
+def download(link, outpath, overwrite=False, progress_callback=None):
     if not os.path.exists(outpath) or overwrite:
         logging.info(f'downloading: {link}')
-        wget.download(link, out=outpath)
+        wget.download(link, out=outpath, bar=progress_callback or wget.bar_adaptive)
         logging.info('done')
     else:
         logging.info(f'path {outpath} already exists, not downloading')
+    if progress_callback:
+        progress_callback(1, 1, 0)
 
 
 def unzip_file(path_to_zip_file: str, path_to_extract_directory: str, delete_zip_afterwards: bool = False):
@@ -21,30 +23,30 @@ def unzip_file(path_to_zip_file: str, path_to_extract_directory: str, delete_zip
         os.remove(path_to_zip_file)
 
 
-def download_model(path_to_download_directory: str, overwrite: bool = False):
+def download_model(path_to_download_directory: str, overwrite: bool = False, progress_callback=None):
     logging.info(f'Downloading model to {path_to_download_directory}')
     if not os.path.exists(path_to_download_directory):
         logging.info(f'Creating directory {path_to_download_directory}')
         os.makedirs(path_to_download_directory)
     url_models = 'https://www.iekm.uniklinik-freiburg.de/storage/s/qkcfEALY2jtExbJ/download'
-    download(url_models, os.path.join(path_to_download_directory, 'models.zip'), overwrite)
+    download(url_models, os.path.join(path_to_download_directory, 'models.zip'), overwrite, progress_callback)
     unzip_file(os.path.join(path_to_download_directory, 'models.zip'), path_to_download_directory)
 
     return os.path.join(path_to_download_directory, 'nnu_best_model_files')
 
 
-def download_testfiles(path_to_download_directory: str, overwrite: bool = False):
+def download_testfiles(path_to_download_directory: str, overwrite: bool = False, progress_callback=None):
     logging.info(f'Downloading testfiles to {path_to_download_directory}')
     if not os.path.exists(path_to_download_directory):
         logging.info(f'Creating directory {path_to_download_directory}')
         os.makedirs(path_to_download_directory)
     url_testfiles = 'https://www.iekm.uniklinik-freiburg.de/storage/s/RyoWaiBQsA4AaMt/download'
-    download(url_testfiles, os.path.join(path_to_download_directory, 'test_data.zip'), overwrite)
+    download(url_testfiles, os.path.join(path_to_download_directory, 'test_data.zip'), overwrite, progress_callback)
     unzip_file(os.path.join(path_to_download_directory, 'test_data.zip'), path_to_download_directory)
 
     return os.path.join(path_to_download_directory, 'test_data')
 
-def download_fiji(path_to_download_directory: str, overwrite: bool = False):
+def download_fiji(path_to_download_directory: str, overwrite: bool = False, progress_callback=None):
     logging.info(f'Downloading Fiji to {path_to_download_directory}')
     if not os.path.exists(path_to_download_directory):
         logging.info(f'Creating directory {path_to_download_directory}')
@@ -60,7 +62,7 @@ def download_fiji(path_to_download_directory: str, overwrite: bool = False):
         url_fiji = 'https://downloads.micron.ox.ac.uk/fiji_update/mirrors/fiji-stable/fiji-stable-win64-jdk.zip'
     else:
         raise NotImplementedError(f'Platform {platform.system()} not supported')
-    download(url_fiji, os.path.join(path_to_download_directory, 'fiji.zip'), overwrite)
+    download(url_fiji, os.path.join(path_to_download_directory, 'fiji.zip'), overwrite, progress_callback)
     unzip_file(os.path.join(path_to_download_directory, 'fiji.zip'), path_to_download_directory)
 
     fiji_path = os.path.join(path_to_download_directory, 'Fiji')

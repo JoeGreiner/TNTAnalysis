@@ -5,10 +5,10 @@ from os.path import join
 from typing import List
 import torch
 
-from PyQt5.QtCore import QThread, Qt, QSettings
+from PyQt5.QtCore import QThread, Qt, QSettings, pyqtSignal
 from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLineEdit, QPushButton, QFileDialog, QApplication, QLabel, \
-    QTextEdit, QHBoxLayout, QCheckBox, QDoubleSpinBox, QMessageBox
+    QTextEdit, QHBoxLayout, QCheckBox, QDoubleSpinBox, QMessageBox, QProgressDialog
 
 from TNTAnalysis.fileIO.download_files import download_fiji, download_model, download_testfiles
 from TNTAnalysis.fileIO.git import check_if_git_uptodate
@@ -126,6 +126,61 @@ def load_files_recursively(path_to_base_folder: str, level: int = 4) -> List[str
             files += glob.glob(os.path.join(path_to_base_folder, '*/' * i + '*.lif'), recursive=True)
         logging.info(f'Loaded {len(files)} files')
     return files
+
+
+class DownloadThread(QThread):
+    progress = pyqtSignal(int)
+
+    def __init__(self, download_function, directory, parent=None):
+        super().__init__(parent)
+        self.download_function = download_function
+        self.directory = directory
+        self.result = None
+        self.error = None
+        self.last_progress = None
+
+    def update_progress(self, current, total, width):
+        progress = min(100, current * 100 // total) if total > 0 else -1
+        if progress != self.last_progress:
+            self.progress.emit(progress)
+            self.last_progress = progress
+
+    def run(self):
+        try:
+            self.result = self.download_function(self.directory, progress_callback=self.update_progress)
+        except Exception as error:
+            logging.exception('Download failed')
+            self.error = str(error)
+
+
+class DownloadProgressDialog(QProgressDialog):
+    def __init__(self, title, download_function, directory, parent=None):
+        super().__init__(f'Connecting...\n{directory}', None, 0, 0, parent)
+        self.setWindowTitle(title)
+        self.setWindowFlags(Qt.Dialog | Qt.CustomizeWindowHint | Qt.WindowTitleHint)
+        self.setAutoClose(False)
+        self.setAutoReset(False)
+        self.directory = directory
+        self.download_thread = DownloadThread(download_function, directory, self)
+        self.download_thread.progress.connect(self.update_progress)
+        self.download_thread.finished.connect(self.accept)
+
+    def update_progress(self, progress):
+        self.setRange(0, 100 if 0 <= progress < 100 else 0)
+        if 0 <= progress < 100:
+            self.setValue(progress)
+        status = 'Extracting...' if progress == 100 else 'Downloading...'
+        self.setLabelText(f'{status}\n{self.directory}')
+
+    def reject(self):
+        if not self.download_thread.isRunning():
+            super().reject()
+
+    def closeEvent(self, event):
+        if self.download_thread.isRunning():
+            event.ignore()
+        else:
+            super().closeEvent(event)
 
 
 class AnalysisThread(QThread):
@@ -430,49 +485,50 @@ class GUI_TNT_Analysis(QWidget):
     def hideProgressBar(self):
         self.progressLabel.hide()
 
+    def download_with_progress(self, download_function, subdirectory, archive_name, title):
+        repo_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if not os.path.exists(join(repo_path, '.git')):
+            repo_path = self.settings.value('git_repo_path', '')
+        if not repo_path or not os.path.exists(join(repo_path, '.git')):
+            repo_path = os.path.expanduser('~/TNTAnalysis')
+        directory = join(repo_path, 'downloads', subdirectory)
+        archive_path = join(directory, archive_name)
+        if os.path.isfile(archive_path):
+            QMessageBox.information(
+                self, 'Download skipped',
+                f'This file already exists:\n{archive_path}\n\n'
+                'The download will be skipped. The existing archive will be extracted.')
+
+        dialog = DownloadProgressDialog(title, download_function, directory, self)
+        dialog.download_thread.start()
+        dialog.exec()
+        dialog.download_thread.wait()
+        result, error = dialog.download_thread.result, dialog.download_thread.error
+        dialog.deleteLater()
+        if error is not None:
+            QMessageBox.warning(self, 'Download failed', error)
+        return result
+
     def download_and_link_fiji(self):
-        tmp_directory = os.path.join(os.path.expanduser("~"), "TNTAnalysis")
-
-        msg = QMessageBox()
-        msg.setWindowTitle("Downloading Fiji")
-        msg.setText("Downloading Fiji may take a while. Please be patient.")
-        msg.exec()
-
-        link_to_fiji = download_fiji(tmp_directory)
-        self.fiji_folder.setText(link_to_fiji)
+        link_to_fiji = self.download_with_progress(download_fiji, 'fiji', 'fiji.zip', 'Downloading Fiji')
         if link_to_fiji:
             self.fiji_folder.setText(link_to_fiji)
             self.settings.setValue("fijiPath", link_to_fiji)
 
     def download_model_from_web(self):
-        tmp_directory = os.path.join(os.path.expanduser("~"), "TNTAnalysis")
-
-        msg = QMessageBox()
-        msg.setWindowTitle("Downloading Model")
-        msg.setText("Downloading the model may take a while. Please be patient.")
-        msg.exec()
-
-        model_folder = download_model(tmp_directory)
-        self.nnunet_folder.setText(model_folder)
+        model_folder = self.download_with_progress(download_model, 'models', 'models.zip', 'Downloading Model')
         if model_folder:
             self.nnunet_folder.setText(model_folder)
             self.settings.setValue("nnunetPath", model_folder)
-        self.nnudataset.setText("301")
-        self.settings.setValue("nnuDatasetNumber", "301")
+            self.nnudataset.setText("301")
+            self.settings.setValue("nnuDatasetNumber", "301")
 
     def download_test_file(self):
-        tmp_directory = os.path.join(os.path.expanduser("~"), "TNTAnalysis", "testfiles")
-        if not os.path.exists(tmp_directory):
-            os.makedirs(tmp_directory)
-
-        msg = QMessageBox()
-        msg.setWindowTitle("Downloading Test File")
-        msg.setText("Downloading the test file may take a while. Please be patient.")
-        msg.exec()
-
-        path_to_testfile = download_testfiles(tmp_directory)
-        self.pathLineEdit.setText(path_to_testfile)
-        self.loadFiles(path_to_testfile, namefilter='2023-11-16_1_GFP-ctrl_TREK1-transfection.lif')
+        path_to_testfile = self.download_with_progress(
+            download_testfiles, 'testfiles', 'test_data.zip', 'Downloading Test File')
+        if path_to_testfile:
+            self.pathLineEdit.setText(path_to_testfile)
+            self.loadFiles(path_to_testfile, namefilter='2023-11-16_1_GFP-ctrl_TREK1-transfection.lif')
 
 
 
