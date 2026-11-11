@@ -2,6 +2,7 @@ from PyQt5.QtCore import QSettings
 from setuptools import setup, find_packages
 from setuptools.command.install import install
 import os
+import platform
 import shutil
 
 class LocalSetup(install):
@@ -13,14 +14,15 @@ class LocalSetup(install):
         print(f'Setting git_repo_path to {git_dir}')
         settings.setValue("git_repo_path", git_dir)
 
-        # if unix
-        if os.name == 'posix':
+        system = platform.system()
+        if system == 'Linux':
             self.install_linux()
-        # if windows
-        elif os.name == 'nt':
+        elif system == 'Windows':
             self.install_windows()
+        elif system == 'Darwin':
+            print('On macOS, start TNT_1_Prediction, TNT_2_CreateMask or TNT_3_ApplyMask from the terminal.')
         else:
-            print(f'OS {os.name} not supported')
+            print(f'OS {system} not supported')
 
     def install_linux(self):
         stepNames = ['TNT_1_Prediction', 'TNT_2_CreateMask', 'TNT_3_ApplyMask']
