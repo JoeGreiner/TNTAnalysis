@@ -10,7 +10,7 @@ import torch
 from PyQt6.QtCore import QThread, Qt, QSettings, QUrl, pyqtSignal
 from PyQt6.QtGui import QDesktopServices, QFont, QPalette
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLineEdit, QPushButton, QFileDialog, QApplication, QLabel, \
-    QHBoxLayout, QCheckBox, QDoubleSpinBox, QMessageBox, QProgressDialog, QTableWidget, QTableWidgetItem, \
+    QHBoxLayout, QCheckBox, QDoubleSpinBox, QSpinBox, QMessageBox, QProgressDialog, QTableWidget, QTableWidgetItem, \
     QAbstractItemView, QHeaderView
 
 from TNTAnalysis.fileIO.download_files import download_fiji, download_model, download_testfiles
@@ -31,6 +31,14 @@ def get_prediction_device():
     return 'cpu'
 
 
+def validate_prediction_processes(preprocessing_processes, export_processes):
+    if preprocessing_processes < 0 or export_processes < 0:
+        raise ValueError('Prediction worker counts cannot be negative.')
+    if (preprocessing_processes == 0) != (export_processes == 0):
+        raise ValueError('Set both preprocessing and export workers to 0 for sequential processing, '
+                         'or set both to at least 1.')
+
+
 def run_analysis(list_tifs: list,
                  path_to_nnunet_model: str,
                  path_to_output_folder: str,
@@ -40,8 +48,10 @@ def run_analysis(list_tifs: list,
                  overlap: float = 0.5,
                  continue_prediction: bool = False,
                  disable_tta: bool = False,
-                 multiprocessing=True,
-                 number_processes=1):
+                 perform_everything_on_device: bool = False,
+                 preprocessing_processes: int = 1,
+                 export_processes: int = 1):
+    validate_prediction_processes(preprocessing_processes, export_processes)
     if not os.path.exists(path_to_nnunet_model):
         raise FileNotFoundError(f"Could not find the nnUNet model at {path_to_nnunet_model}")
     if not os.path.exists(path_to_output_folder):
@@ -71,7 +81,10 @@ def run_analysis(list_tifs: list,
 
         command_str = (
             f'nnUNetv2_predict -i "{input_folder}" -o "{output_folder_predictions}" -d {nnu_dataset_number} -c 3d_fullres'
-            f" -step_size {overlap} -device {get_prediction_device()}")
+            f" -step_size {overlap} -device {get_prediction_device()}"
+            f" -npp {preprocessing_processes} -nps {export_processes}")
+        if not perform_everything_on_device:
+            command_str += " --not_on_device"
         if disable_tta:
             command_str += " --disable_tta"
         if continue_prediction:
@@ -194,9 +207,11 @@ class AnalysisThread(QThread):
                  overlap: float = 0.5,
                  continue_prediction: bool = False,
                  disable_tta: bool = False,
-                 multiprocessing: bool = True,
-                 number_processes: int = 1):
+                 perform_everything_on_device: bool = False,
+                 preprocessing_processes: int = 1,
+                 export_processes: int = 1):
         super().__init__()
+        validate_prediction_processes(preprocessing_processes, export_processes)
         nnunet_dataset_number = int(nnunet_dataset_number)
         if frame_duration is not None:
             frame_duration = float(frame_duration)
@@ -212,10 +227,8 @@ class AnalysisThread(QThread):
         assert os.path.exists(path_to_output_folder), f"Could not find the output folder at {path_to_output_folder}"
         assert nnunet_dataset_number > 0, "The nnUNet dataset number needs to be a positive number"
         assert os.path.exists(fiji_path), f"Could not find the Fiji executable at {fiji_path}"
-        assert number_processes > 0, "The number of processes needs to be a positive number"
         assert overlap > 0, "The overlap needs to be a positive number"
         assert 0 < overlap < 1, "The overlap needs to be between 0 and 1"
-        assert isinstance(multiprocessing, bool), "The multiprocessing flag needs to be a boolean"
         assert isinstance(continue_prediction, bool), "The continue prediction flag needs to be a boolean"
         assert isinstance(disable_tta, bool), "The disable TTA flag needs to be a boolean"
 
@@ -225,8 +238,9 @@ class AnalysisThread(QThread):
         self.path_to_output_folder = path_to_output_folder
         self.fiji_path = fiji_path
         self.frame_duration = frame_duration
-        self.multiprocessing = multiprocessing
-        self.number_processes = number_processes
+        self.perform_everything_on_device = perform_everything_on_device
+        self.preprocessing_processes = preprocessing_processes
+        self.export_processes = export_processes
         self.overlap = overlap
         self.continue_prediction = continue_prediction
         self.disable_tta = disable_tta
@@ -244,9 +258,10 @@ class AnalysisThread(QThread):
                          overlap=self.overlap,
                          continue_prediction=self.continue_prediction,
                          disable_tta=self.disable_tta,
-                         multiprocessing=self.multiprocessing,
                          nnu_dataset_number=self.nnunet_dataset_number,
-                         number_processes=self.number_processes)
+                         perform_everything_on_device=self.perform_everything_on_device,
+                         preprocessing_processes=self.preprocessing_processes,
+                         export_processes=self.export_processes)
         except Exception as error:
             self.error = f'{type(error).__name__}: {error}'
             logging.exception('Analysis failed')
@@ -354,6 +369,37 @@ class GUI_TNT_Analysis(QWidget):
         self.restore_default_prediction.clicked.connect(self.restoreDefaultPredictionSettings)
         self.row_layout_nnunet_options.addWidget(self.restore_default_prediction)
 
+        prediction_memory_layout = QHBoxLayout()
+        layout.addLayout(prediction_memory_layout)
+
+        self.perform_everything_on_device = QCheckBox('perform_everything_on_device', self)
+        self.perform_everything_on_device.setToolTip(
+            'Keep the full input and prediction arrays on the CUDA GPU. '
+            'When disabled, these arrays stay in CPU RAM while the network still runs on the selected device.')
+        self.perform_everything_on_device.toggled.connect(self.saveSettingsPerformEverythingOnDevice)
+        prediction_memory_layout.addWidget(self.perform_everything_on_device)
+
+        self.preprocessing_processes = QSpinBox(self)
+        self.preprocessing_processes.setRange(0, 64)
+        self.preprocessing_processes.setValue(1)
+        self.preprocessing_processes.setPrefix('Preprocessing workers (npp): ')
+        self.preprocessing_processes.setToolTip(
+            'Number of background preprocessing workers. More workers use more RAM. '
+            'Set both worker counts to 0 for sequential processing.')
+        self.preprocessing_processes.valueChanged.connect(self.saveSettingsPreprocessingProcesses)
+        prediction_memory_layout.addWidget(self.preprocessing_processes)
+
+        self.export_processes = QSpinBox(self)
+        self.export_processes.setRange(0, 64)
+        self.export_processes.setValue(1)
+        self.export_processes.setPrefix('Export workers (nps): ')
+        self.export_processes.setToolTip(
+            'Number of background segmentation export workers. More workers use more RAM. '
+            'Set both worker counts to 0 for sequential processing.')
+        self.export_processes.valueChanged.connect(self.saveSettingsExportProcesses)
+        prediction_memory_layout.addWidget(self.export_processes)
+        prediction_memory_layout.addWidget(QLabel('0/0: sequential processing', self))
+
         ## Fiji Path Selection
         self.row_layout_fiji = QHBoxLayout()
         layout.addLayout(self.row_layout_fiji)
@@ -458,6 +504,10 @@ class GUI_TNT_Analysis(QWidget):
         if step_size == '':
             step_size = 0.5
         self.step_size.setValue(float(step_size))
+        self.perform_everything_on_device.setChecked(
+            self.settings.value('performEverythingOnDevice', False, type=bool))
+        self.preprocessing_processes.setValue(self.settings.value('preprocessingProcesses', 1, type=int))
+        self.export_processes.setValue(self.settings.value('exportProcesses', 1, type=int))
 
     def showFileDialogOutputPath(self):
         dir_path = QFileDialog.getExistingDirectory(self, 'Select directory')
@@ -503,10 +553,22 @@ class GUI_TNT_Analysis(QWidget):
     def saveSettingsStepSize(self):
         self.settings.setValue("stepSize", self.step_size.value())
 
+    def saveSettingsPerformEverythingOnDevice(self):
+        self.settings.setValue('performEverythingOnDevice', self.perform_everything_on_device.isChecked())
+
+    def saveSettingsPreprocessingProcesses(self):
+        self.settings.setValue('preprocessingProcesses', self.preprocessing_processes.value())
+
+    def saveSettingsExportProcesses(self):
+        self.settings.setValue('exportProcesses', self.export_processes.value())
+
     def restoreDefaultPredictionSettings(self):
         self.disable_tta.setChecked(False)
         self.continue_prediction.setChecked(False)
         self.step_size.setValue(0.5)
+        self.perform_everything_on_device.setChecked(False)
+        self.preprocessing_processes.setValue(1)
+        self.export_processes.setValue(1)
 
     def widgetIsAdded(self, object):
         # Check if the button is in the layout
@@ -590,7 +652,9 @@ class GUI_TNT_Analysis(QWidget):
                                                  continue_prediction=self.continue_prediction.isChecked(),
                                                  disable_tta=self.disable_tta.isChecked(),
                                                  frame_duration=frame_duration,
-                                                 multiprocessing=True)
+                                                 perform_everything_on_device=self.perform_everything_on_device.isChecked(),
+                                                 preprocessing_processes=self.preprocessing_processes.value(),
+                                                 export_processes=self.export_processes.value())
         except Exception as error:
             logging.exception('Could not start analysis')
             QMessageBox.critical(self, 'Cannot start analysis', f'{type(error).__name__}: {error}')
