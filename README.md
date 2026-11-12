@@ -1,5 +1,11 @@
 
 # TNTAnalysis
+
+[![Windows](https://img.shields.io/badge/Windows-0078D4)](conda_env_windows.yml)
+[![macOS](https://img.shields.io/badge/macOS-000000)](conda_env_macos.yml)
+[![Linux](https://img.shields.io/badge/Linux-FCC624)](conda_env_linux.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 ![image](https://github.com/JoeGreiner/TNTAnalysis/assets/24453528/8e2b1467-df7f-498b-afe6-06fa31b22cca)
 
 This repository contains software for the deep learning-based analysis of tunnelling nanotubes (TNT) in reflection microscopy time series. Therefore, TNT tips are predicted using neural networks ([nnUNet](https://github.com/MIC-DKFZ/nnUNet)), and then tracked using [TrackMate](https://www.sciencedirect.com/science/article/pii/S1046202316303346?via%3Dihub). An easy-to-use GUI (capable of batch analysis) is provided to guide the user through the process. While we have written the software with Leica's .lif files in mind, it can be easily adapted to other file formats.
