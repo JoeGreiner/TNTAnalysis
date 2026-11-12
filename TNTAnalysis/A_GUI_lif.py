@@ -425,7 +425,7 @@ class GUI_TNT_Analysis(QWidget):
         self.dropLabel.setFont(font)
         self.dropLabel.setStyleSheet("background-color: #f0f0f0; border: 2px dashed #888888; color: #888888;")
         self.dropLabel.setGeometry(0, 0, figure_width, 300)
-        layout.addWidget(self.dropLabel)
+        layout.addWidget(self.dropLabel, 1)
 
         self.pathLineEdit = QLineEdit()
         self.pathLineEdit.hide()
@@ -582,7 +582,7 @@ class GUI_TNT_Analysis(QWidget):
 
     def showProgressBar(self):
         if not self.widgetIsAdded(self.progressLabel):
-            self.layout().addWidget(self.progressLabel)
+            self.layout().addWidget(self.progressLabel, 1)
         self.progressLabel.show()
 
     def hideProgressBar(self):
@@ -755,7 +755,7 @@ class GUI_TNT_Analysis(QWidget):
             if not self.widgetIsAdded(self.fileCountLabel):
                 self.layout().addWidget(self.fileCountLabel)
             if not self.widgetIsAdded(self.frameTimingPanel):
-                self.layout().addWidget(self.frameTimingPanel)
+                self.layout().addWidget(self.frameTimingPanel, 1)
             self.fileCountLabel.show()
             self.frameTimingPanel.show()
             self.dropLabel.hide()
