@@ -7,7 +7,7 @@ liffile>=2026.11.8
 napari==0.10.0
 ndevio==0.10.0
 napari-nifti==1.0.0
-nnunetv2==2.8.1
+nnunetv2 @ https://github.com/MIC-DKFZ/nnUNet/archive/c04f7ec8bbffaf3ebc3b26aa2c89042e8a8e368b.zip
 torch>=2.6,!=2.9.*,<3
 itk>=5.4.6,<6
 SimpleITK>=2.5,<3
